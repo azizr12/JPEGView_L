@@ -1,16 +1,16 @@
-name: Build JPEGView_L (Win32 & x64 Release)
+name: Build JPEGView_L (Functional)
 
 on:
   push:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
-  workflow_dispatch: # Enables manual triggering from the GitHub Actions UI
+  workflow_dispatch: # Allows manual triggering from the GitHub Actions UI
 
 jobs:
   build:
     name: Build ${{ matrix.arch }} (Release)
-    runs-on: windows-2019 # Visual Studio 2019 is the officially supported development environment per COMPILING.txt
+    runs-on: windows-2019 # Required: VS2019 is the officially supported toolchain per COMPILING.txt
     strategy:
       matrix:
         arch: [Win32, x64]
@@ -19,26 +19,76 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive # Critical: Ensures WTL and other dependencies in the 'deps' folder are initialized
+          submodules: recursive # Critical: Fetches all dependency source code
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
         with:
           vs-version: '[16.0,17.0)' # Targets Visual Studio 2019
+          msbuild-architecture: ${{ matrix.arch }}
+
+      - name: Setup NASM
+        uses: ilammy/setup-nasm@v1 # Required by libjpeg-turbo build scripts
+
+      - name: Initialize WTL Submodule
+        shell: cmd
+        run: git submodule update --init deps/WTL-sf
+
+      - name: Cache Pre-built Dependencies
+        id: cache-deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            src/JPEGView/libwebp/lib/*.lib
+            src/JPEGView/libwebp/lib64/*.lib
+            src/JPEGView/libjpeg-turbo/lib/*.lib
+            src/JPEGView/libjpeg-turbo/lib64/*.lib
+            src/JPEGView/libpng-apng/lib/*.lib
+            src/JPEGView/libpng-apng/lib64/*.lib
+            src/JPEGView/lcms2/bin/*.dll
+            src/JPEGView/lcms2/bin64/*.dll
+            src/JPEGView/lcms2/lib/*.lib
+            src/JPEGView/lcms2/lib64/*.lib
+            src/JPEGView/libheif/bin/*.dll
+            src/JPEGView/libheif/bin64/*.dll
+            src/JPEGView/libheif/lib/*.lib
+            src/JPEGView/libheif/lib64/*.lib
+            src/JPEGView/libavif/bin/*.dll
+            src/JPEGView/libavif/bin64/*.dll
+            src/JPEGView/libavif/lib/*.lib
+            src/JPEGView/libavif/lib64/*.lib
+            src/JPEGView/libjxl/bin/*.dll
+            src/JPEGView/libjxl/bin64/*.dll
+            src/JPEGView/libjxl/lib/*.lib
+            src/JPEGView/libjxl/lib64/*.lib
+            src/JPEGView/libraw/bin/*.dll
+            src/JPEGView/libraw/bin64/*.dll
+            src/JPEGView/libraw/lib/*.lib
+            src/JPEGView/libraw/lib64/*.lib
+          key: ${{ runner.os }}-deps-${{ hashFiles('.gitmodules', 'extras/scripts/*.bat') }}
+
+      - name: Build Dependencies (if cache miss)
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        shell: cmd
+        run: |
+          call extras\scripts\build-libwebp.bat
+          call extras\scripts\build-libjpegturbo.bat
+          call extras\scripts\build-libpng-apng.bat
+          call extras\scripts\build-lcms2.bat
+          call extras\scripts\build-libheif_libavif.bat
+          call extras\scripts\build-libraw.bat
+          call extras\scripts\build-libjxl.bat
 
       - name: Build Solution
         shell: cmd
         run: |
-          echo Building JPEGView for ${{ matrix.arch }}...
-          msbuild.exe src\JPEGView.sln /property:Platform=${{ matrix.arch }} /property:Configuration=Release /m /p:RestorePackages=true
+          msbuild.exe src\JPEGView.sln /property:Platform=${{ matrix.arch }} /property:Configuration=Release /m
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: JPEGView_L-${{ matrix.arch }}-Release
-          # Adjust the path below if the project's output directory differs
           path: |
-            src/JPEGView/bin/${{ matrix.arch }}/Release/
-            src/JPEGView.Setup/bin/${{ matrix.arch }}/Release/
-          if-no-files-found: warn
-          retention-days: 7
+            src/JPEGView/bin
+            src/JPEGView.Setup/bin
+          if-no-files-found: error
