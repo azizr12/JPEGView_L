@@ -1,0 +1,44 @@
+name: Build JPEGView_L (Win32 & x64 Release)
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  workflow_dispatch: # Enables manual triggering from the GitHub Actions UI
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }} (Release)
+    runs-on: windows-2019 # Visual Studio 2019 is the officially supported development environment per COMPILING.txt
+    strategy:
+      matrix:
+        arch: [Win32, x64]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive # Critical: Ensures WTL and other dependencies in the 'deps' folder are initialized
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+        with:
+          vs-version: '[16.0,17.0)' # Targets Visual Studio 2019
+
+      - name: Build Solution
+        shell: cmd
+        run: |
+          echo Building JPEGView for ${{ matrix.arch }}...
+          msbuild.exe src\JPEGView.sln /property:Platform=${{ matrix.arch }} /property:Configuration=Release /m /p:RestorePackages=true
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: JPEGView_L-${{ matrix.arch }}-Release
+          # Adjust the path below if the project's output directory differs
+          path: |
+            src/JPEGView/bin/${{ matrix.arch }}/Release/
+            src/JPEGView.Setup/bin/${{ matrix.arch }}/Release/
+          if-no-files-found: warn
+          retention-days: 7
