@@ -19,9 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: Win32
-            arch: x86
-            config: Release
+          # Only building the 64-bit version
           - platform: x64
             arch: x64
             config: Release
