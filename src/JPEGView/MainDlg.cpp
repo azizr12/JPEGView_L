@@ -1162,16 +1162,17 @@ LRESULT CMainDlg::OnMouseMove(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM lParam, B
 	return 0;
 }
 
-LRESULT CMainDlg::OnMouseWheel(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, BOOL& /*bHandled*/) {
+LRESULT CMainDlg::OnMouseWheel(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, BOOL& /*bHandled*/)
+{
 	bool bCtrl = (::GetKeyState(VK_CONTROL) & 0x8000) != 0;
 	bool bShift = (::GetKeyState(VK_SHIFT) & 0x8000) != 0;
 	int nDelta = GET_WHEEL_DELTA_WPARAM(wParam);
 
 	if (CSettingsProvider::This().NavigateWithMouseWheel() && !m_pPanelMgr->IsModalPanelShown()) {
 		if (!bCtrl && !bShift) {
-			// [GF] Smart handling:
+			// Smart handling:
 			// Pan vertically (if image is higher than window)
-			// OR go to previous/next image (if image smaller)
+			// OR go to previous/next image (if image is smaller).
 			if (m_pCurrentImage != NULL) {
 				if (nDelta < 0) {
 					if (GetAutoZoomMode() == Helpers::ZM_BookMode) {
@@ -1179,7 +1180,9 @@ LRESULT CMainDlg::OnMouseWheel(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, 
 							this->Invalidate(FALSE);
 						}
 					} else {
-						unsigned int iRealHeight = unsigned int (m_dZoom * (m_pCurrentImage->OrigHeight()));
+						unsigned int iRealHeight =
+							unsigned int(m_dZoom * (m_pCurrentImage->OrigHeight()));
+
 						if (iRealHeight > m_clientRect.Height()) {
 							if (PerformPan(0, -PAN_STEP, false) == true) {
 								this->Invalidate(FALSE);
@@ -1195,7 +1198,9 @@ LRESULT CMainDlg::OnMouseWheel(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, 
 							this->Invalidate(FALSE);
 						}
 					} else {
-						unsigned int iRealHeight = unsigned int (m_dZoom * (m_pCurrentImage->OrigHeight()));
+						unsigned int iRealHeight =
+							unsigned int(m_dZoom * (m_pCurrentImage->OrigHeight()));
+
 						if (iRealHeight > m_clientRect.Height()) {
 							if (PerformPan(0, PAN_STEP, false) == true) {
 								this->Invalidate(FALSE);
@@ -1205,12 +1210,26 @@ LRESULT CMainDlg::OnMouseWheel(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, 
 						}
 					}
 				}
+			} else {
+				// No current image, e.g. after a corrupt/0-byte image failed to load.
+				// Still allow mouse-wheel navigation to continue.
+				if (nDelta < 0) {
+					GotoImage(POS_Next);
+				} else if (nDelta > 0) {
+					GotoImage(POS_Previous);
+				}
 			}
-		} else if (bCtrl && bShift) {	// Zoom
+		} else if (bCtrl && bShift) { // Zoom
 			if (m_dZoom > 0 && !m_pUnsharpMaskPanelCtl->IsVisible()) {
-				PerformZoom(CSettingsProvider::This().MouseWheelZoomSpeed() * double(nDelta) / WHEEL_DELTA, true, m_bMouseOn, true);
+				PerformZoom(
+					CSettingsProvider::This().MouseWheelZoomSpeed() *
+						double(nDelta) / WHEEL_DELTA,
+					true,
+					m_bMouseOn,
+					true
+				);
 			}
-		} else if (bShift) {	// Pan horizontally
+		} else if (bShift) { // Pan horizontally
 			if (m_pCurrentImage != NULL) {
 				if (nDelta < 0) {
 					if (PerformPan(-PAN_STEP, 0, false) == true) {
@@ -1222,7 +1241,7 @@ LRESULT CMainDlg::OnMouseWheel(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, 
 					}
 				}
 			}
-		} else if (bCtrl) {		// Pan vertically
+		} else if (bCtrl) { // Pan vertically
 			if (m_pCurrentImage != NULL) {
 				if (nDelta < 0) {
 					if (PerformPan(0, -PAN_STEP, false) == true) {
@@ -1236,8 +1255,15 @@ LRESULT CMainDlg::OnMouseWheel(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, 
 			}
 		}
 	} else if (m_dZoom > 0 && !m_pUnsharpMaskPanelCtl->IsVisible()) {
-		PerformZoom(CSettingsProvider::This().MouseWheelZoomSpeed() * double(nDelta) / WHEEL_DELTA, true, m_bMouseOn, true);
+		PerformZoom(
+			CSettingsProvider::This().MouseWheelZoomSpeed() *
+				double(nDelta) / WHEEL_DELTA,
+			true,
+			m_bMouseOn,
+			true
+		);
 	}
+
 	return 0;
 }
 
