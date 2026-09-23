@@ -4642,7 +4642,19 @@ void CMainDlg::AnimateTransition() {
 	CBitmap memDCBitmap;
 	memDCBitmap.CreateCompatibleBitmap(paintDC, nW, nH);
 	memDC.SelectBitmap(memDCBitmap);
+
+	// Fix linear-light AVX2/SSE HQ resampling re-encodes through a steep
+	// linear->sRGB curve near black. Negative-lobe ringing from the HQ kernels near
+	// high-contrast dark edges - normally invisible in gamma-space - gets amplified
+	// into a visible cloudy gray/white haze once composited with AlphaBlend().
+	// Only TE_Blend uses AlphaBlend(); the other effects (Slide/Roll/Scroll) just BitBlt,
+	// so they never exhibit this artifact and keep full HQ resampling quality.
+	bool bSavedHQResampling = m_bHQResampling;
+	if (m_eTransitionEffect == Helpers::TE_Blend) {
+		m_bHQResampling = false; // force point sampling for this snapshot, bypassing the linear-light path
+	}
 	PaintToDC(memDC);
+	m_bHQResampling = bSavedHQResampling; // restore immediately; only this one snapshot is affected
 
 	int nSteps = max(1, (m_nTransitionTime + 20) / nFrameTimeMs);
 
