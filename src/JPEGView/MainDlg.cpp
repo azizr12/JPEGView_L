@@ -4631,7 +4631,11 @@ void CMainDlg::AnimateTransition() {
 	// paint to memory DC
 	int nW = m_clientRect.Width(), nH = m_clientRect.Height();
 
-	CDC paintDC(::GetDC(m_hWnd));
+	HDC hWndDC = ::GetDC(m_hWnd);
+	if (hWndDC == NULL) {
+		return;
+	}
+	CDCHandle paintDC(hWndDC);
 	
 	CDC memDC;
 	memDC.CreateCompatibleDC(paintDC);
