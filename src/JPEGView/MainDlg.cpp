@@ -4756,6 +4756,7 @@ void CMainDlg::AnimateTransition() {
 		if (::PeekMessage(&msg, m_hWnd, WM_KEYFIRST, WM_KEYLAST, PM_NOREMOVE)) break;
 		if (::PeekMessage(&msg, m_hWnd, WM_CONTEXTMENU, WM_CONTEXTMENU, PM_NOREMOVE)) break;
 	}
+	::ReleaseDC(m_hWnd, hWndDC);
 }
 
 void CMainDlg::CleanupAndTerminate() {
