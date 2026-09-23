@@ -4660,8 +4660,8 @@ void CMainDlg::AnimateTransition() {
 				if (i == nSteps) {
 					paintDC.BitBlt(0, 0, nW, nH, memDC, 0, 0, SRCCOPY);
 				} else {
-					float fFactor = (float)i / nSteps ;
-					blendFunc.SourceConstantAlpha = min(255, (int)((fFactor * fFactor * i + 1) * fAlphaStep + 0.5f));
+					float fFactor = (float)(i + 1) / (nSteps + 1);
+					blendFunc.SourceConstantAlpha = (BYTE)(fFactor * 255.0f + 0.5f);
 					paintDC.AlphaBlend(0, 0, nW, nH, memDC, 0, 0, nW, nH, blendFunc);
 				}
 				break;
@@ -4749,6 +4749,13 @@ void CMainDlg::AnimateTransition() {
 				break;
 			}
 		}
+
+		// Sync this frame's direct-to-window-DC draw to vsync, same as OnPaint() does for normal paints.
+		// AnimateTransition() bypasses OnPaint() entirely (writes via ::GetDC()), so without this the
+		// transition's frames are never handed to DWM at the same cadence as everything else the fork paints.
+		if (m_DynDwmFlush)
+			m_DynDwmFlush();
+
 		DWORD time = ::GetTickCount();
 		if (time - lastTime < nFrameTimeMs) {
 			::Sleep(nFrameTimeMs - (time - lastTime));
