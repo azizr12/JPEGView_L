@@ -1751,9 +1751,13 @@ inline static const float* RotateLineToDIB_1(const float* pSource, uint8* pTarge
 
 	for (int i = 0; i < simdPixelsPerRegister - 1; i++)
 	{
-		*((uint8*)pTarget) = LinRGB12_sRGB8[(INT)(*pSource)]; pSource++;  pTarget += nIncTargetLine;
+		int nIdx = (int)(*pSource + 0.5f);
+		nIdx = (nIdx < 0) ? 0 : (nIdx > 4095) ? 4095 : nIdx;
+		*((uint8*)pTarget) = LinRGB12_sRGB8[nIdx]; pSource++;  pTarget += nIncTargetLine;
 	}
-	*((uint8*)pTarget) = LinRGB12_sRGB8[(INT)(*pSource)]; pSource++;
+	int nIdx = (int)(*pSource + 0.5f);
+	nIdx = (nIdx < 0) ? 0 : (nIdx > 4095) ? 4095 : nIdx;
+	*((uint8*)pTarget) = LinRGB12_sRGB8[nIdx]; pSource++;
 
 	return pSource;
 }
@@ -1762,9 +1766,13 @@ inline static const float* RotateLineToDIB(const float* pSource, uint8* pTarget,
 
 	for (int i = 0; i < simdPixelsPerRegister - 1; i++)
 	{
-		*pTarget = LinRGB12_sRGB8[(INT)(*pSource++)]; pTarget += nIncTargetLine;
+		int nIdx = (int)(*pSource + 0.5f);
+		nIdx = (nIdx < 0) ? 0 : (nIdx > 4095) ? 4095 : nIdx;
+		*pTarget = LinRGB12_sRGB8[nIdx]; pSource++; pTarget += nIncTargetLine;
 	}
-	*pTarget = LinRGB12_sRGB8[(INT)(*pSource++)];
+	int nIdx = (int)(*pSource + 0.5f);
+	nIdx = (nIdx < 0) ? 0 : (nIdx > 4095) ? 4095 : nIdx;
+	*pTarget = LinRGB12_sRGB8[nIdx]; pSource++;
 
 	return pSource;
 }
