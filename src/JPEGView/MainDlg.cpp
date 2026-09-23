@@ -4630,31 +4630,28 @@ void CMainDlg::AnimateTransition() {
 
 	// paint to memory DC
 	int nW = m_clientRect.Width(), nH = m_clientRect.Height();
-
 	HDC hWndDC = ::GetDC(m_hWnd);
 	if (hWndDC == NULL) {
 		return;
 	}
-	CDCHandle paintDC(hWndDC);
-	
+	CDC paintDC(hWndDC);
 	CDC memDC;
 	memDC.CreateCompatibleDC(paintDC);
 	CBitmap memDCBitmap;
 	memDCBitmap.CreateCompatibleBitmap(paintDC, nW, nH);
 	memDC.SelectBitmap(memDCBitmap);
 
-	// Fix linear-light AVX2/SSE HQ resampling re-encodes through a steep
+	// Fix: the fork's linear-light AVX2/SSE HQ resampling re-encodes through a steep
 	// linear->sRGB curve near black. Negative-lobe ringing from the HQ kernels near
 	// high-contrast dark edges - normally invisible in gamma-space - gets amplified
 	// into a visible cloudy gray/white haze once composited with AlphaBlend().
-	// Only TE_Blend uses AlphaBlend(); the other effects (Slide/Roll/Scroll) just BitBlt,
-	// so they never exhibit this artifact and keep full HQ resampling quality.
+	// Only TE_Blend uses AlphaBlend(); other effects just BitBlt and are unaffected.
 	bool bSavedHQResampling = m_bHQResampling;
 	if (m_eTransitionEffect == Helpers::TE_Blend) {
-		m_bHQResampling = false; // force point sampling for this snapshot, bypassing the linear-light path
+		m_bHQResampling = false; // force point sampling for this snapshot only
 	}
 	PaintToDC(memDC);
-	m_bHQResampling = bSavedHQResampling; // restore immediately; only this one snapshot is affected
+	m_bHQResampling = bSavedHQResampling; // restore immediately
 
 	int nSteps = max(1, (m_nTransitionTime + 20) / nFrameTimeMs);
 
@@ -4672,8 +4669,11 @@ void CMainDlg::AnimateTransition() {
 				if (i == nSteps) {
 					paintDC.BitBlt(0, 0, nW, nH, memDC, 0, 0, SRCCOPY);
 				} else {
-					float fFactor = (float)i / nSteps ;
-					blendFunc.SourceConstantAlpha = min(255, (int)((fFactor * fFactor * i + 1) * fAlphaStep + 0.5f));
+					// Fix: was a cubic-ish `fFactor * fFactor * i` curve, which kept
+					// alpha near-zero for roughly the first half of the transition.
+					// Linear ramp matches the (i+1)/(nSteps+1) pattern used below.
+					float fFactor = (float)(i + 1) / (nSteps + 1);
+					blendFunc.SourceConstantAlpha = (BYTE)(fFactor * 255.0f + 0.5f);
 					paintDC.AlphaBlend(0, 0, nW, nH, memDC, 0, 0, nW, nH, blendFunc);
 				}
 				break;
@@ -4772,7 +4772,15 @@ void CMainDlg::AnimateTransition() {
 		if (::PeekMessage(&msg, m_hWnd, WM_KEYFIRST, WM_KEYLAST, PM_NOREMOVE)) break;
 		if (::PeekMessage(&msg, m_hWnd, WM_CONTEXTMENU, WM_CONTEXTMENU, PM_NOREMOVE)) break;
 	}
-	::ReleaseDC(m_hWnd, hWndDC);
+
+	::ReleaseDC(m_hWnd, hWndDC); // fix: was never released in this version - GDI handle leak on every transition
+
+	// Fix: GotoImage() skips its own Invalidate()/UpdateWindow() while a transition
+	// effect is active, so without this the window is left showing the last raw
+	// BitBlt/AlphaBlend frame (point-sampled quality, if TE_Blend) until some
+	// unrelated event triggers a repaint later.
+	this->Invalidate(FALSE);
+	this->UpdateWindow();
 }
 
 void CMainDlg::CleanupAndTerminate() {
