@@ -4696,8 +4696,8 @@ void CMainDlg::AnimateTransition() {
 				if (i == nSteps) {
 					paintDC.BitBlt(0, 0, nW, nH, memDC, 0, 0, SRCCOPY);
 				} else {
-					float fFactor = (float)i / nSteps ;
-					blendFunc.SourceConstantAlpha = min(255, (int)((fFactor * fFactor * i + 1) * fAlphaStep + 0.5f));
+					float fFactor = (float)(i + 1) / (nSteps + 1);
+					blendFunc.SourceConstantAlpha = (BYTE)(fFactor * 255.0f + 0.5f);
 					paintDC.AlphaBlend(0, 0, nW, nH, memDC, 0, 0, nW, nH, blendFunc);
 				}
 				break;
