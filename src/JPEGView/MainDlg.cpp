@@ -552,8 +552,8 @@ LRESULT CMainDlg::OnPaint(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, B
 		}
 	}
 
-	if (m_DynDwmFlush)
-		m_DynDwmFlush();	// Wait for vsync
+/*GF*/	if (m_DynDwmFlush)
+/*GF*/		m_DynDwmFlush();	// Wait for vsync
 
 	CPaintDC dc(m_hWnd);
 	m_dRealizedZoom = 1.0;
