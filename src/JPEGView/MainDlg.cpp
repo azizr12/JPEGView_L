@@ -1393,54 +1393,35 @@ LRESULT CMainDlg::OnTimer(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, BOOL&
 				BOOL bNotUsed;
 				OnTimer(WM_TIMER, msg.wParam, msg.lParam, bNotUsed);
 			}
-
 			if (msg.wParam == SLIDESHOW_TIMER_EVENT_ID && wParam == ANIMATION_TIMER_EVENT_ID) {
-				// If there are queued slideshow timer events and we process an animation event,
-				// the slideshow event has precedence.
+				// if there are queued slideshow timer events and we process an animation event, the slideshow event has preceedence
 				wParam = SLIDESHOW_TIMER_EVENT_ID;
 			}
 		}
 
-		// Only change the displayed image and start the transition when there are
-		// no other messages waiting in the application's message queue.
-		if (!::PeekMessage(&msg, this->m_hWnd, 0, 0, PM_NOREMOVE)) {
-			int nRealDisplayTimeMs = ::GetTickCount() - m_nLastSlideShowImageTickCount;
-
-			if (m_nCurrentTimeout > 250 && wParam == SLIDESHOW_TIMER_EVENT_ID) {
-				if (m_nCurrentTimeout - nRealDisplayTimeMs > 100) {
-					// Restart timer.
-					::Sleep(m_nCurrentTimeout - nRealDisplayTimeMs);
-					::KillTimer(this->m_hWnd, SLIDESHOW_TIMER_EVENT_ID);
-					::SetTimer(this->m_hWnd, SLIDESHOW_TIMER_EVENT_ID, m_nCurrentTimeout, NULL);
-				}
+		int nRealDisplayTimeMs = ::GetTickCount() - m_nLastSlideShowImageTickCount;
+		if (m_nCurrentTimeout > 250 && wParam == SLIDESHOW_TIMER_EVENT_ID) {
+			if (m_nCurrentTimeout - nRealDisplayTimeMs > 100) {
+				// restart timer
+				::Sleep(m_nCurrentTimeout - nRealDisplayTimeMs);
+				::KillTimer(this->m_hWnd, SLIDESHOW_TIMER_EVENT_ID);
+				::SetTimer(this->m_hWnd, SLIDESHOW_TIMER_EVENT_ID, m_nCurrentTimeout, NULL);
 			}
-
-			GotoImage(
-				(wParam == ANIMATION_TIMER_EVENT_ID) ? POS_NextFrame : POS_NextSlideShow,
-				NO_REMOVE_KEY_MSG
-			);
-
-			if (wParam == SLIDESHOW_TIMER_EVENT_ID && UseSlideShowTransitionEffect()) {
-				AnimateTransition();
-			}
-
-			if (wParam != ANIMATION_TIMER_EVENT_ID) {
-				m_nLastSlideShowImageTickCount = ::GetTickCount();
-			}
+		}
+		GotoImage((wParam == ANIMATION_TIMER_EVENT_ID) ? POS_NextFrame : POS_NextSlideShow, NO_REMOVE_KEY_MSG);
+		if (wParam == SLIDESHOW_TIMER_EVENT_ID && UseSlideShowTransitionEffect()) {
+			AnimateTransition();
+		}
+		if (wParam != ANIMATION_TIMER_EVENT_ID) {
+			m_nLastSlideShowImageTickCount = ::GetTickCount();
 		}
 	} else if (wParam == ZOOM_TIMER_EVENT_ID) {
 		::KillTimer(this->m_hWnd, ZOOM_TIMER_EVENT_ID);
-
 		if (m_bTemporaryLowQ || m_bInZooming) {
 			::SetTimer(this->m_hWnd, ZOOM_TEXT_TIMER_EVENT_ID, ZOOM_TEXT_TIMEOUT, NULL);
-
-			if (m_bInZooming) {
-				m_bShowZoomFactor = true;
-			}
-
+			if (m_bInZooming) m_bShowZoomFactor = true;
 			m_bTemporaryLowQ = false;
 			m_bInZooming = false;
-
 			if (m_bHQResampling && m_pCurrentImage != NULL) {
 				this->Invalidate(FALSE);
 			}
@@ -1449,7 +1430,6 @@ LRESULT CMainDlg::OnTimer(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, BOOL&
 		m_bShowZoomFactor = false;
 		::KillTimer(this->m_hWnd, ZOOM_TEXT_TIMER_EVENT_ID);
 		m_pZoomNavigatorCtl->InvalidateZoomNavigatorRect();
-
 		CRect imageProcArea = m_pImageProcPanelCtl->PanelRect();
 		this->InvalidateRect(GetZoomTextRect(imageProcArea), FALSE);
 	} else if (wParam == TOAST_EXPIRY_TIMER_EVENT_ID) {
@@ -1487,52 +1467,43 @@ LRESULT CMainDlg::OnTimer(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, BOOL&
 						m_bPanTimerActive = false;
 						break;
 					} else {
-						iRealHeight = INT(m_dZoom * (m_pCurrentImage->OrigHeight()));
-						iRealWidth = INT(m_dZoom * (m_pCurrentImage->OrigWidth()));
+						iRealHeight = INT (m_dZoom * (m_pCurrentImage->OrigHeight()));
+						iRealWidth = INT (m_dZoom * (m_pCurrentImage->OrigWidth()));
 
-						if ((iRealHeight > m_clientRect.Height()) &&
-							(iRealWidth <= m_clientRect.Width()) &&
-							(GetAutoZoomMode() == Helpers::ZM_BookMode)) {
-
-							if (((bLeft == true) && (bRight == false)) ||
-								((bUp == true) && (bDown == false))) {
+						if ((iRealHeight > m_clientRect.Height()) && (iRealWidth <= m_clientRect.Width()) && (GetAutoZoomMode() == Helpers::ZM_BookMode)) {
+							if (((bLeft == true) && (bRight == false)) || ((bUp == true) && (bDown == false)))
 								PanYbase = 10;
-							} else if (((bLeft == false) && (bRight == true)) ||
-									   ((bUp == false) && (bDown == true))) {
+							else if (((bLeft == false) && (bRight == true)) || ((bUp == false) && (bDown == true)))
 								PanYbase = -10;
-							} else {
+							else
 								PanYbase = 0;
-							}
 						} else {
-							if ((bUp == true) && (bDown == false)) {
+							if ((bUp == true) && (bDown == false))
 								PanYbase = 10;
-							} else if ((bUp == false) && (bDown == true)) {
+							else if ((bUp == false) && (bDown == true))
 								PanYbase = -10;
-							} else {
+							else
 								PanYbase = 0;
-							}
 
-							if ((bLeft == true) && (bRight == false)) {
+							if ((bLeft == true) && (bRight == false))
 								PanXbase = 10;
-							} else if ((bLeft == false) && (bRight == true)) {
+							else if (( bLeft == false) && (bRight == true))
 								PanXbase = -10;
-							} else {
+							else
 								PanXbase = 0;
-							}
 						}
 
-						if ((PanXbase != 0) && (PanYbase != 0)) {
-							// Diagonal movement.
+						if ((PanXbase != 0) && (PanYbase != 0)) {	// diagonal movement
 							PanX = (int)(PanXbase * 0.7);
 							PanY = (int)(PanYbase * 0.7);
 						} else {
 							PanX = PanXbase;
 							PanY = PanYbase;
 						}
-
-						if (PerformPan(PanX, PanY, false) == true) {
-							// this->Invalidate(FALSE);
-							this->UpdateWindow(); // Force wait until actually redrawn.
+							
+						if (PerformPan(PanX,PanY,false) == true) {
+							//this->Invalidate(FALSE);
+							this->UpdateWindow();	// force wait until actually redrawn
 
 							MSG msg;
 							while (::PeekMessage(&msg, this->m_hWnd, 0, 0, PM_REMOVE));
@@ -1549,25 +1520,23 @@ LRESULT CMainDlg::OnTimer(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, BOOL&
 			} else {
 				UINT timestart = timeGetTime();
 				UINT timenow = 0;
-
+				
 				UINT modu_old = 4294967295;
 				UINT modu = 0;
-
+				
 				while (m_bPanTimerActive == true) {
 					bUp = (::GetAsyncKeyState(VK_UP) & 0x8000) != 0;
 					bDown = (::GetAsyncKeyState(VK_DOWN) & 0x8000) != 0;
 					bLeft = (::GetAsyncKeyState(VK_LEFT) & 0x8000) != 0;
 					bRight = (::GetAsyncKeyState(VK_RIGHT) & 0x8000) != 0;
 
-					if ((bUp == false) && (bDown == false) &&
-						(bLeft == false) && (bRight == false)) {
-
+					if ((bUp == false) && (bDown == false)  && (bLeft == false)  && (bRight == false)) {
 						::timeEndPeriod(1);
 						m_bPanTimerActive = false;
 						break;
 					} else {
 						timenow = timeGetTime();
-						modu = ((timenow - timestart) * 100) % 1668; // 1663 on Intel.
+						modu = ((timenow-timestart)*100) % 1668;	 // 1663 on intel
 						INT BorderDistanceY = 0;
 
 						if (modu < modu_old) {
@@ -1577,17 +1546,15 @@ LRESULT CMainDlg::OnTimer(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, BOOL&
 								else if ((bUp == false) && (bDown == true))
 									PanY = -10;
 
-								if ((bLeft == true) && (bRight == false))
+								if (( bLeft == true) && (bRight == false))
 									PanX = 10;
-								else if ((bLeft == false) && (bRight == true))
+								else if (( bLeft == false) && (bRight == true))
 									PanX = -10;
 							} else {
-								iRealHeight = INT(m_dZoom * (m_pCurrentImage->OrigHeight()));
-								iRealWidth = INT(m_dZoom * (m_pCurrentImage->OrigWidth()));
+								iRealHeight = INT (m_dZoom * (m_pCurrentImage->OrigHeight()));
+								iRealWidth = INT (m_dZoom * (m_pCurrentImage->OrigWidth()));
 
-								if ((iRealHeight > m_clientRect.Height()) &&
-									(iRealWidth <= m_clientRect.Width())) {
-
+								if ((iRealHeight > m_clientRect.Height()) && (iRealWidth <= m_clientRect.Width())) {
 									if ((bLeft == true) && (bRight == false))
 										PanY = 10;
 									else if ((bUp == true) && (bDown == false))
@@ -1598,32 +1565,30 @@ LRESULT CMainDlg::OnTimer(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, BOOL&
 									else if ((bUp == false) && (bDown == true))
 										PanY = -10;
 
-									if (m_offsets.y > 0)
-										BorderDistanceY =
-											((iRealHeight - m_clientRect.Height()) / 2) - m_offsets.y; // Top
+									if (m_offsets.y>0)
+										BorderDistanceY = ((iRealHeight-m_clientRect.Height())/2)-m_offsets.y;	// Top
 									else
-										BorderDistanceY =
-											((iRealHeight - m_clientRect.Height()) / 2) + m_offsets.y; // Bottom
-
-									if (BorderDistanceY <= 100) {
-										if (BorderDistanceY < 6)
-											PanY = (int)(PanY * 0.1);
-										else if (BorderDistanceY < 8)
-											PanY = (int)(PanY * 0.2);
-										else if (BorderDistanceY < 12)
-											PanY = (int)(PanY * 0.3);
-										else if (BorderDistanceY < 17)
-											PanY = (int)(PanY * 0.4);
-										else if (BorderDistanceY < 24)
-											PanY = (int)(PanY * 0.5);
-										else if (BorderDistanceY < 34)
-											PanY = (int)(PanY * 0.6);
-										else if (BorderDistanceY < 50)
-											PanY = (int)(PanY * 0.7);
-										else if (BorderDistanceY < 70)
-											PanY = (int)(PanY * 0.8);
+										BorderDistanceY = ((iRealHeight-m_clientRect.Height())/2)+m_offsets.y;	// Bottom
+									
+									if (BorderDistanceY<=100) {
+										if (BorderDistanceY<6)
+											PanY = (int)(PanY*0.1);
+										else if (BorderDistanceY<8)
+											PanY = (int)(PanY*0.2);
+										else if (BorderDistanceY<12)
+											PanY = (int)(PanY*0.3);
+										else if (BorderDistanceY<17)
+											PanY = (int)(PanY*0.4);
+										else if (BorderDistanceY<24)
+											PanY = (int)(PanY*0.5);
+										else if (BorderDistanceY<34)
+											PanY = (int)(PanY*0.6);
+										else if (BorderDistanceY<50)
+											PanY = (int)(PanY*0.7);
+										else if (BorderDistanceY<70)
+											PanY = (int)(PanY*0.8);
 										else
-											PanY = (int)(PanY * 0.9);
+											PanY = (int)(PanY*0.9);
 									}
 								} else {
 									if ((bUp == true) && (bDown == false))
@@ -1631,26 +1596,25 @@ LRESULT CMainDlg::OnTimer(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, BOOL&
 									else if ((bUp == false) && (bDown == true))
 										PanY = -10;
 
-									if ((bLeft == true) && (bRight == false))
+									if (( bLeft == true) && (bRight == false))
 										PanX = 10;
-									else if ((bLeft == false) && (bRight == true))
+									else if (( bLeft == false) && (bRight == true))
 										PanX = -10;
 								}
 							}
-
-							if ((PanX != 0) && (PanY != 0)) {
-								// Diagonal movement.
+								
+							if ((PanX != 0) && (PanY != 0)) {	// diagonal movement
 								PanX = (int)(PanX * 0.7);
 								PanY = (int)(PanY * 0.7);
 							}
 
-							if (PerformPan(PanX, PanY, false) == true) {
-								// this->Invalidate(FALSE);
-								this->UpdateWindow(); // Force wait until actually redrawn.
+							if (PerformPan(PanX,PanY,false) == true) {
+								//this->Invalidate(FALSE);
+								this->UpdateWindow();	// force wait until actually redrawn
 							}
 
 							MSG msg;
-							while (::PeekMessage(&msg, this->m_hWnd, 0, 0, PM_REMOVE)); // Empty message queue at 60 Hz.
+							while (::PeekMessage(&msg, this->m_hWnd, 0, 0, PM_REMOVE));	// Empty message queue at 60 Hz
 						}
 
 						modu_old = modu;
@@ -1658,7 +1622,7 @@ LRESULT CMainDlg::OnTimer(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, BOOL&
 					}
 				}
 			}
-		}
+    	}
 	} else {
 		if (!m_pCropCtl->OnTimer((int)wParam)) {
 			m_pPanelMgr->OnTimer((int)wParam);
