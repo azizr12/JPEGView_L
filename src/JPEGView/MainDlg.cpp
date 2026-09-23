@@ -4624,6 +4624,7 @@ bool CMainDlg::UseSlideShowTransitionEffect() {
 	return m_bFullScreenMode && m_nCurrentTimeout >= 1000 && m_eTransitionEffect != Helpers::TE_None;
 }
 
+
 void CMainDlg::AnimateTransition() {
 
 	int nFrameTimeMs = (m_eTransitionEffect >= Helpers::TE_RollLR || m_eTransitionEffect <= Helpers::TE_ScrollBT) ? 10 : 20;
@@ -4642,7 +4643,16 @@ void CMainDlg::AnimateTransition() {
 	CBitmap memDCBitmap;
 	memDCBitmap.CreateCompatibleBitmap(paintDC, nW, nH);
 	memDC.SelectBitmap(memDCBitmap);
+
+	// Bypass the linear-light AVX2/SSE resampling path for the transition snapshot only.
+	// That path's linear->sRGB re-encode amplifies negative-lobe ringing from the HQ kernels
+	// near high-contrast dark content, causing black to read as a cloudy gray/white mid-blend.
+	// Point sampling (HQ resampling off) never enters that code path. Normal display after the
+	// transition completes is unaffected, since OnPaint() restores full quality independently.
+	bool bSavedHQResampling = m_bHQResampling;
+	m_bHQResampling = false;
 	PaintToDC(memDC);
+	m_bHQResampling = bSavedHQResampling;
 
 	int nSteps = max(1, (m_nTransitionTime + 20) / nFrameTimeMs);
 
@@ -4750,9 +4760,6 @@ void CMainDlg::AnimateTransition() {
 			}
 		}
 
-		// Sync this frame's direct-to-window-DC draw to vsync, same as OnPaint() does for normal paints.
-		// AnimateTransition() bypasses OnPaint() entirely (writes via ::GetDC()), so without this the
-		// transition's frames are never handed to DWM at the same cadence as everything else the fork paints.
 		if (m_DynDwmFlush)
 			m_DynDwmFlush();
 
