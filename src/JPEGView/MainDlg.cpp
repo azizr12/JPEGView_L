@@ -4640,18 +4640,7 @@ void CMainDlg::AnimateTransition() {
 	CBitmap memDCBitmap;
 	memDCBitmap.CreateCompatibleBitmap(paintDC, nW, nH);
 	memDC.SelectBitmap(memDCBitmap);
-
-	// Fix: the fork's linear-light AVX2/SSE HQ resampling re-encodes through a steep
-	// linear->sRGB curve near black. Negative-lobe ringing from the HQ kernels near
-	// high-contrast dark edges - normally invisible in gamma-space - gets amplified
-	// into a visible cloudy gray/white haze once composited with AlphaBlend().
-	// Only TE_Blend uses AlphaBlend(); other effects just BitBlt and are unaffected.
-	bool bSavedHQResampling = m_bHQResampling;
-	if (m_eTransitionEffect == Helpers::TE_Blend) {
-		m_bHQResampling = false; // force point sampling for this snapshot only
-	}
 	PaintToDC(memDC);
-	m_bHQResampling = bSavedHQResampling; // restore immediately
 
 	int nSteps = max(1, (m_nTransitionTime + 20) / nFrameTimeMs);
 
@@ -4777,8 +4766,7 @@ void CMainDlg::AnimateTransition() {
 
 	// Fix: GotoImage() skips its own Invalidate()/UpdateWindow() while a transition
 	// effect is active, so without this the window is left showing the last raw
-	// BitBlt/AlphaBlend frame (point-sampled quality, if TE_Blend) until some
-	// unrelated event triggers a repaint later.
+	// BitBlt/AlphaBlend frame until some unrelated event triggers a repaint later.
 	this->Invalidate(FALSE);
 	this->UpdateWindow();
 }

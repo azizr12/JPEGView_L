@@ -65,12 +65,11 @@ CXMMImage* ApplyFilter_AVX(int nSourceHeight, int nTargetHeight, int nWidth,
                 pB += nRowLenBytes;
             }
 
-            if (bRoundResult) {
-                // Clamping [0, 4095]
-                ymmR = _mm256_min_ps(_mm256_max_ps(ymmR, ymmZero), ymmMax);
-                ymmG = _mm256_min_ps(_mm256_max_ps(ymmG, ymmZero), ymmMax);
-                ymmB = _mm256_min_ps(_mm256_max_ps(ymmB, ymmZero), ymmMax);
+            ymmR = _mm256_min_ps(_mm256_max_ps(ymmR, ymmZero), ymmMax);
+            ymmG = _mm256_min_ps(_mm256_max_ps(ymmG, ymmZero), ymmMax);
+            ymmB = _mm256_min_ps(_mm256_max_ps(ymmB, ymmZero), ymmMax);
 
+            if (bRoundResult) {
                 ymmR = _mm256_round_ps(ymmR, _MM_FROUND_TO_NEAREST_INT);
                 ymmG = _mm256_round_ps(ymmG, _MM_FROUND_TO_NEAREST_INT);
                 ymmB = _mm256_round_ps(ymmB, _MM_FROUND_TO_NEAREST_INT);
