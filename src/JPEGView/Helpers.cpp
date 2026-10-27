@@ -93,13 +93,93 @@ CSize GetImageRect(int nWidth, int nHeight, int nScreenWidth, int nScreenHeight,
 	return size;
 }
 
+// Returns the locale that matches the language selected in JPEGView, not the
+// Windows locale. Otherwise the date is localized with the system locale (e.g.
+// Chinese characters) even though the UI strings are e.g. Arabic.
+static LCID GetDateLocale() {
+	LPCTSTR sLanguage = CSettingsProvider::This().Language();
+	if (sLanguage == NULL || _tcsicmp(sLanguage, _T("auto")) == 0)
+		return LOCALE_USER_DEFAULT;
+
+	LANGID languageId = 0;
+	if (_tcsicmp(sLanguage, _T("en")) == 0)
+		languageId = MAKELANGID(LANG_ENGLISH, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("ar")) == 0)
+		languageId = MAKELANGID(LANG_ARABIC, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("be")) == 0)
+		languageId = MAKELANGID(LANG_BELARUSIAN, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("bg")) == 0)
+		languageId = MAKELANGID(LANG_BULGARIAN, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("cs")) == 0)
+		languageId = MAKELANGID(LANG_CZECH, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("de")) == 0)
+		languageId = MAKELANGID(LANG_GERMAN, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("el")) == 0)
+		languageId = MAKELANGID(LANG_GREEK, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("es-ar")) == 0)
+		languageId = MAKELANGID(LANG_SPANISH, SUBLANG_SPANISH_ARGENTINA);
+	else if (_tcsicmp(sLanguage, _T("es")) == 0)
+		languageId = MAKELANGID(LANG_SPANISH, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("eu")) == 0)
+		languageId = MAKELANGID(LANG_BASQUE, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("fi")) == 0)
+		languageId = MAKELANGID(LANG_FINNISH, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("fr")) == 0)
+		languageId = MAKELANGID(LANG_FRENCH, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("hu")) == 0)
+		languageId = MAKELANGID(LANG_HUNGARIAN, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("it")) == 0)
+		languageId = MAKELANGID(LANG_ITALIAN, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("ja")) == 0)
+		languageId = MAKELANGID(LANG_JAPANESE, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("ko")) == 0)
+		languageId = MAKELANGID(LANG_KOREAN, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("pl")) == 0)
+		languageId = MAKELANGID(LANG_POLISH, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("pt-br")) == 0)
+		languageId = MAKELANGID(LANG_PORTUGUESE, SUBLANG_PORTUGUESE_BRAZILIAN);
+	else if (_tcsicmp(sLanguage, _T("pt")) == 0)
+		languageId = MAKELANGID(LANG_PORTUGUESE, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("ro")) == 0)
+		languageId = MAKELANGID(LANG_ROMANIAN, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("ru")) == 0)
+		languageId = MAKELANGID(LANG_RUSSIAN, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("sk")) == 0)
+		languageId = MAKELANGID(LANG_SLOVAK, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("sl")) == 0)
+		languageId = MAKELANGID(LANG_SLOVENIAN, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("sr")) == 0)
+		languageId = MAKELANGID(LANG_SERBIAN, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("sv")) == 0)
+		languageId = MAKELANGID(LANG_SWEDISH, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("ta")) == 0)
+		languageId = MAKELANGID(LANG_TAMIL, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("tr")) == 0)
+		languageId = MAKELANGID(LANG_TURKISH, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("uk")) == 0)
+		languageId = MAKELANGID(LANG_UKRAINIAN, SUBLANG_DEFAULT);
+	else if (_tcsicmp(sLanguage, _T("zh-tw")) == 0)
+		languageId = MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_TRADITIONAL);
+	else if (_tcsicmp(sLanguage, _T("zh")) == 0)
+		languageId = MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED);
+
+	if (languageId == 0)
+		return LOCALE_USER_DEFAULT;
+	return MAKELCID(languageId, SORT_DEFAULT);
+}
+
 CString SystemTimeToString(const SYSTEMTIME &time) {
 	TCHAR sBufferDate[64];
-	TCHAR sBufferDay[8];
+	TCHAR sBufferDay[16];
 	TCHAR sBufferTime[64];
-	::GetDateFormat(LOCALE_USER_DEFAULT, 0, &time, _T("ddd"), sBufferDay, 8);
-	::GetDateFormat(LOCALE_USER_DEFAULT, DATE_SHORTDATE, &time, NULL, sBufferDate, 64);
-	::GetTimeFormat(LOCALE_USER_DEFAULT, TIME_NOSECONDS, &time, NULL, sBufferTime, 64);
+	LCID locale = GetDateLocale();
+	if (::GetDateFormat(locale, DATE_SHORTDATE, &time, NULL, sBufferDate, 64) == 0) {
+		// The selected language has no usable Windows locale, fall back to the system locale
+		locale = LOCALE_USER_DEFAULT;
+		::GetDateFormat(locale, DATE_SHORTDATE, &time, NULL, sBufferDate, 64);
+	}
+	::GetDateFormat(locale, 0, &time, _T("ddd"), sBufferDay, 16);
+	::GetTimeFormat(locale, TIME_NOSECONDS, &time, NULL, sBufferTime, 64);
 	return CString(sBufferDay) + _T(" ") + sBufferDate + _T(" ") + sBufferTime;
 }
 
@@ -1093,7 +1173,7 @@ bool CanReadAhead(CJPEGImage* pImage) {
 		}
 	}
 
-	// Funktionszeiger-Typ für wine_get_version definieren
+
 	typedef const char* (__cdecl* pwine_get_version)(void);
 
 	bool isRunningUnderWine() {
@@ -1103,7 +1183,7 @@ bool CanReadAhead(CJPEGImage* pImage) {
 			return false;
 		}
 
-		// Prüfen, ob die Wine-spezifische Funktion existiert
+
 		pwine_get_version wine_get_version =
 			(pwine_get_version)GetProcAddress(hNtDll, "wine_get_version");
 
@@ -1142,14 +1222,14 @@ bool CanReadAhead(CJPEGImage* pImage) {
 		return _T("");
 	}
 
-	// Prüft, ob eine Linux-Datei auf dem Host existiert
+
 	bool IsLinuxBinaryAvailable(LPCTSTR szUnixPath) {
 		if (szUnixPath == NULL || szUnixPath[0] == _T('\0')) return false;
 
 		CString sDosPath;
 
 		if (szUnixPath[0] == _T('~')) {
-			// Unter Wine enthält %USERNAME% den Linux-Benutzernamen (z. B. "gernotf")
+
 			TCHAR szUser[256] = { 0 };
 			DWORD dwLen = ::GetEnvironmentVariable(_T("USERNAME"), szUser, 256);
 			if (dwLen == 0) {
@@ -1157,7 +1237,7 @@ bool CanReadAhead(CJPEGImage* pImage) {
 			}
 
 			if (dwLen > 0) {
-				// '~' zu 'Z:\home\<username>\...' auflösen
+
 				sDosPath.Format(_T("Z:\\home\\%s%s"), szUser, szUnixPath + 1);
 			}
 			else {
@@ -1165,17 +1245,16 @@ bool CanReadAhead(CJPEGImage* pImage) {
 			}
 		}
 		else if (szUnixPath[0] == _T('/')) {
-			// Absolute Unix-Pfade wie /usr/bin/... auf Z:\ mappen
+
 			sDosPath.Format(_T("Z:%s"), szUnixPath);
 		}
 		else {
 			sDosPath = szUnixPath;
 		}
 
-		// Vorwärts-Slashes in Windows-Backslashes umwandeln
+
 		sDosPath.Replace(_T('/'), _T('\\'));
 
-		// Existenz der Datei auf Laufwerk Z:\ prüfen
 		DWORD dwAttr = ::GetFileAttributes(sDosPath);
 		return (dwAttr != INVALID_FILE_ATTRIBUTES && !(dwAttr & FILE_ATTRIBUTE_DIRECTORY));
 	}
