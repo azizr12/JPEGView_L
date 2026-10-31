@@ -827,38 +827,34 @@ CFileList* CFileList::TryCreateFileList(const CString& directory, int nNewLevel)
 
 void CFileList::FindFiles() {
 	m_fileList.clear();
-	
+
 	if (m_sDirectory.IsEmpty()) return;
 
-    LPCTSTR* allFileEndings = GetSupportedFileEndingList();
+	LPCTSTR* allFileEndings = GetSupportedFileEndingList();
 	std::set<CString> validExtensions;
-    for (int i = 0; i < nNumEndings; ++i) {
-        CString ext = allFileEndings[i];
-        ext.MakeLower();
-        validExtensions.insert(ext);
-    }
-
-	CFindFile fileFind;
-	BOOL bWorking = fileFind.FindFile(m_sDirectory + _T("\\*"));
-
-	while (bWorking) {
-		bWorking = fileFind.FindNextFile();
-
-		if (fileFind.IsDots() || fileFind.IsDirectory()) continue;
-
-		CString fileName = fileFind.GetFileName();
-		int nDotPos = fileName.ReverseFind(_T('.'));
-		if (nDotPos != -1) {
-			CString ext = fileName.Mid(nDotPos + 1);
-			ext.MakeLower();
-
-			if (validExtensions.find(ext) != validExtensions.end()) {
-				AddToFileList(m_fileList, fileFind, ext);
-			}
-		}
+	for (int i = 0; i < nNumEndings; ++i) {
+		CString ext = allFileEndings[i];
+		ext.MakeLower();
+		validExtensions.insert(ext);
 	}
 
-	fileFind.Close();
+	CFindFile fileFind;
+	if (fileFind.FindFile(m_sDirectory + _T("\\*"))) {
+		do {
+			if (fileFind.IsDots() || fileFind.IsDirectory()) continue;  // continue jumps to the while-condition
+
+			CString fileName = fileFind.GetFileName();
+			int nDotPos = fileName.ReverseFind(_T('.'));
+			if (nDotPos != -1) {
+				CString ext = fileName.Mid(nDotPos + 1);
+				ext.MakeLower();
+				if (validExtensions.find(ext) != validExtensions.end()) {
+					AddToFileList(m_fileList, fileFind, ext);
+				}
+			}
+		} while (fileFind.FindNextFile());
+		fileFind.Close();
+	}
 
 	m_fileList.sort();
 }
