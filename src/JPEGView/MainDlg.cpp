@@ -403,9 +403,9 @@ LRESULT CMainDlg::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam
 				} else {
 					// Bookmark point to an image file. Check if exits and ask the user if the launch that instead.
 							
-					TCHAR sParentDir[MAX_PATH];
-					lstrcpy(sParentDir,m_sStartupFile);
-					PathRemoveFileSpec(sParentDir);
+					CString sParentDir = m_sStartupFile;
+					::PathRemoveFileSpec(sParentDir.GetBuffer());
+					sParentDir.ReleaseBuffer();
 					
 					CString sBookmarkPath = sParentDir + CString(_T("\\")) + sBookmark;
 					if (::PathFileExists(sBookmarkPath)) {
@@ -671,8 +671,14 @@ LRESULT CMainDlg::OnPaint(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, B
     		unsigned int iRealHeight = unsigned int (m_dZoom * (m_pCurrentImage->OrigHeight()));
 			
 			TCHAR infoText[4096];
-    		LPCTSTR sFullPath = CurrentFileName(false);
-    		if (sFullPath != NULL) {
+			CString sFullPath = CurrentFileName(false);
+    		if (!sFullPath.IsEmpty()) {
+                if (m_bIsRunningUnderWine) {
+                    CString sUnixPath = Helpers::GetUnixPathFromWine(sFullPath);
+                    if (!sUnixPath.IsEmpty()) {
+                        sFullPath = sUnixPath;
+                    }
+                }
 				if (m_pCurrentImage->NumberOfFrames() > 1) {
 					if (m_bIsAnimationPlaying) {
 						_stprintf_s(infoText,4096,_T("%s\nFrame %d of %d (%d ms)\nFile Size:   %s\nImage Size:  %d x %d\nZoomed Size: %d x %d   (Zoom Factor: %f)\nWindow Size: %d x %d\n\nCPU-Threads: %d\nCPU-Algorithm: %s\nDownsampling-Filter: %s\n\nLoading Image:  %.2f ms\nScaling Image:  %.2f ms"),sFullPath, m_pCurrentImage->FrameIndex()+1, m_pCurrentImage->NumberOfFrames(), m_pCurrentImage->FrameTimeMs(), Helpers::FormatFileSize(Helpers::GetFileSize(sFullPath)),m_pCurrentImage->OrigWidth(),m_pCurrentImage->OrigHeight(),iRealWidth,iRealHeight,m_dZoom,m_clientRect.Width(),m_clientRect.Height(),iNumThreads,sCPU,sFilter,m_pCurrentImage->GetLoadTickCount(), m_pCurrentImage->LastOpTickCount());
@@ -925,13 +931,13 @@ LRESULT CMainDlg::OnAnotherInstanceStarted(UINT /*uMsg*/, WPARAM /*wParam*/, LPA
 						return 0;
 					}
 				} else {
-					TCHAR sCopyDataPath[MAX_PATH];
-					lstrcpy(sCopyDataPath,sCopyDataFile);
-					PathRemoveFileSpec(sCopyDataPath);
+					CString sCopyDataPath = sCopyDataFile;
+					::PathRemoveFileSpec(sCopyDataPath.GetBuffer());
+					sCopyDataPath.ReleaseBuffer();
 
-					TCHAR sCurrentPath[MAX_PATH];
-					lstrcpy(sCurrentPath,sCurrentFile);
-					PathRemoveFileSpec(sCurrentPath);	
+					CString sCurrentPath = sCurrentFile;
+					::PathRemoveFileSpec(sCurrentPath.GetBuffer());
+					sCurrentPath.ReleaseBuffer();	
 
 					bSameImageFolder = (lstrcmpi(sCopyDataPath, sCurrentPath) == 0);
 				}
@@ -3010,33 +3016,34 @@ void CMainDlg::ExecuteCommand(int nCommand) {
 void CMainDlg::ChangeFolderLanguage() {
 	LPCTSTR sCurrentFileName = CurrentFileName(false);
 	if (sCurrentFileName != NULL) {
-		TCHAR sFullPath[MAX_PATH];
-		lstrcpy(sFullPath,sCurrentFileName);
-		
-		TCHAR sFNameNoExt[MAX_PATH];
-		_wsplitpath(sFullPath,NULL,NULL,sFNameNoExt,NULL);
+		// CString instead of MAX_PATH buffers: paths can be longer than MAX_PATH
+		CString sFullPath = sCurrentFileName;
 
-		TCHAR sParentDir[MAX_PATH];
-		lstrcpy(sParentDir,sFullPath);
-		PathRemoveFileSpec(sParentDir);
+		CString sFNameNoExt = sFullPath;
+		::PathStripPath(sFNameNoExt.GetBuffer());
+		sFNameNoExt.ReleaseBuffer();
+		::PathRemoveExtension(sFNameNoExt.GetBuffer());
+		sFNameNoExt.ReleaseBuffer();
 
-		TCHAR sParentDir2[MAX_PATH];
-		lstrcpy(sParentDir2,sParentDir);
-		PathRemoveFileSpec(sParentDir2);
+		CString sParentDir = sFullPath;
+		::PathRemoveFileSpec(sParentDir.GetBuffer());
+		sParentDir.ReleaseBuffer();
 
-		TCHAR sParentDirName[MAX_PATH];
-		lstrcpy(sParentDirName,sParentDir);
-		PathStripPath(sParentDirName);
+		CString sParentDir2 = sParentDir;
+		::PathRemoveFileSpec(sParentDir2.GetBuffer());
+		sParentDir2.ReleaseBuffer();
 
-		TCHAR sTestFile[MAX_PATH] = TEXT("");
-		TCHAR sTestPath[MAX_PATH] = TEXT("");
-		TCHAR sTargetFile[MAX_PATH] = TEXT("");
+		CString sParentDirName = sParentDir;
+		::PathStripPath(sParentDirName.GetBuffer());
+		sParentDirName.ReleaseBuffer();
+
+		CString sTestFile, sTestPath, sTargetFile;
 		BOOL bMatchFound=FALSE;
 
 		std::wstring wexpr = TEXT("^(.+)\\s+\\[(en|de|ch|ko)\\]$");
 		std::wregex we(wexpr);
 		std::wsmatch wsMatch;
-		std::wstring wtest = sParentDirName;
+		std::wstring wtest = (LPCTSTR)sParentDirName;
 		if(std::regex_search(wtest, wsMatch, we)) {
 			// wsMatch.str(1).c_str()	contains the release title without language tag
 			// wsMatch.str(2).c_str()	contains the language tag without brackets
@@ -3044,88 +3051,88 @@ void CMainDlg::ChangeFolderLanguage() {
 			
 			if (lstrcmpi(wsMatch.str(2).c_str(),TEXT("en")) == 0) {
 				//::OutputDebugStringW(TEXT("A1a"));
-				wsprintf(sTestPath,TEXT("%s\\%s [de]"),sParentDir2,wsMatch.str(1).c_str());
+				sTestPath.Format(TEXT("%s\\%s [de]"),sParentDir2.GetString(),wsMatch.str(1).c_str());
 				if (::PathFileExists(sTestPath)) {
 					//::OutputDebugStringW(TEXT("A1b"));
-					wsprintf(sTestFile,TEXT("%s\\%s"),sTestPath,sFNameNoExt);
+					sTestFile.Format(TEXT("%s\\%s"),sTestPath.GetString(),sFNameNoExt.GetString());
 					bMatchFound = TRUE;
 				}
 			}
 
 			if ((bMatchFound==FALSE) || (lstrcmpi(wsMatch.str(2).c_str(),TEXT("de")) == 0)) {
 				//::OutputDebugStringW(TEXT("A2a"));
-				wsprintf(sTestPath,TEXT("%s\\%s [ch]"),sParentDir2,wsMatch.str(1).c_str());
+				sTestPath.Format(TEXT("%s\\%s [ch]"),sParentDir2.GetString(),wsMatch.str(1).c_str());
 				if (::PathFileExists(sTestPath)) {
 					//::OutputDebugStringW(TEXT("A2b"));
-					wsprintf(sTestFile,TEXT("%s\\%s"),sTestPath,sFNameNoExt);
+					sTestFile.Format(TEXT("%s\\%s"),sTestPath.GetString(),sFNameNoExt.GetString());
 					bMatchFound = TRUE;
 				}
 			}
 
 			if ((bMatchFound==FALSE) || (lstrcmpi(wsMatch.str(2).c_str(),TEXT("ch")) == 0)) {
 				//::OutputDebugStringW(TEXT("A3a"));
-				wsprintf(sTestPath,TEXT("%s\\%s [ko]"),sParentDir2,wsMatch.str(1).c_str());
+				sTestPath.Format(TEXT("%s\\%s [ko]"),sParentDir2.GetString(),wsMatch.str(1).c_str());
 				if (::PathFileExists(sTestPath)) {
 					//::OutputDebugStringW(TEXT("A3b"));
-					wsprintf(sTestFile,TEXT("%s\\%s"),sTestPath,sFNameNoExt);
+					sTestFile.Format(TEXT("%s\\%s"),sTestPath.GetString(),sFNameNoExt.GetString());
 					bMatchFound = TRUE;
 				}
 			}
 
 			if ((bMatchFound==FALSE) || (lstrcmpi(wsMatch.str(2).c_str(),TEXT("ko")) == 0)) {
 				//::OutputDebugStringW(TEXT("A4a"));
-				wsprintf(sTestPath,TEXT("%s\\%s"),sParentDir2,wsMatch.str(1).c_str());
+				sTestPath.Format(TEXT("%s\\%s"),sParentDir2.GetString(),wsMatch.str(1).c_str());
 				if (::PathFileExists(sTestPath)) {
 					//::OutputDebugStringW(TEXT("A4b"));
-					wsprintf(sTestFile,TEXT("%s\\%s"),sTestPath,sFNameNoExt);
+					sTestFile.Format(TEXT("%s\\%s"),sTestPath.GetString(),sFNameNoExt.GetString());
 					bMatchFound = TRUE;
 				}
 			}
 
 			if (bMatchFound==FALSE) {
 				//::OutputDebugStringW(TEXT("A5a"));
-				wsprintf(sTestPath,TEXT("%s\\%s [en]"),sParentDir2,wsMatch.str(1).c_str());
+				sTestPath.Format(TEXT("%s\\%s [en]"),sParentDir2.GetString(),wsMatch.str(1).c_str());
 				if (::PathFileExists(sTestPath)) {
 					//::OutputDebugStringW(TEXT("A5b"));
-					wsprintf(sTestFile,TEXT("%s\\%s"),sTestPath,sFNameNoExt);
+					sTestFile.Format(TEXT("%s\\%s"),sTestPath.GetString(),sFNameNoExt.GetString());
 					bMatchFound = TRUE;
 				}
 			}
 		} else {
 			//::OutputDebugStringW(TEXT("B1a"));
-			wsprintf(sTestPath,TEXT("%s\\%s [en]"),sParentDir2,sParentDirName);
+			sTestPath.Format(TEXT("%s\\%s [en]"),sParentDir2.GetString(),sParentDirName.GetString());
 			if (::PathFileExists(sTestPath)) {
 				//::OutputDebugStringW(TEXT("B1b"));
-				wsprintf(sTestFile,TEXT("%s\\%s"),sTestPath,sFNameNoExt);
+				sTestFile.Format(TEXT("%s\\%s"),sTestPath.GetString(),sFNameNoExt.GetString());
 				bMatchFound = TRUE;
 			}
 			
 			if (bMatchFound==FALSE) {
 				//::OutputDebugStringW(TEXT("B2a"));
-				wsprintf(sTestPath,TEXT("%s\\%s [de]"),sParentDir2,sParentDirName);
+				sTestPath.Format(TEXT("%s\\%s [de]"),sParentDir2.GetString(),sParentDirName.GetString());
 				if (::PathFileExists(sTestPath)) {
 					//::OutputDebugStringW(TEXT("B2b"));
-					wsprintf(sTestFile,TEXT("%s\\%s"),sTestPath,sFNameNoExt);
+					sTestFile.Format(TEXT("%s\\%s"),sTestPath.GetString(),sFNameNoExt.GetString());
 					bMatchFound = TRUE;
 				}
 			}
 
 			if (bMatchFound==FALSE) {
 				//::OutputDebugStringW(TEXT("B3a"));
-				wsprintf(sTestPath,TEXT("%s\\%s [ch]"),sParentDir2,sParentDirName);
+				sTestPath.Format(TEXT("%s\\%s [ch]"),sParentDir2.GetString(),sParentDirName.GetString());
 				if (::PathFileExists(sTestPath)) {
 					//::OutputDebugStringW(TEXT("B3b"));
-					wsprintf(sTestFile,TEXT("%s\\%s"),sTestPath,sFNameNoExt);
+					sTestFile.Format(TEXT("%s\\%s"),sTestPath.GetString(),sFNameNoExt.GetString());
 					bMatchFound = TRUE;
 				}
 			}
 
 			if (bMatchFound==FALSE) {
 				//::OutputDebugStringW(TEXT("B4a"));
-				wsprintf(sTestPath,TEXT("%s\\%s [ko]"),sParentDir2,sParentDirName);
+				sTestPath.Format(TEXT("%s\\%s [ko]"),sParentDir2.GetString(),sParentDirName.GetString());
 				if (::PathFileExists(sTestPath)) {
 					//::OutputDebugStringW(TEXT("B4b"));
-					wsprintf(sTestFile,TEXT("%s\\%s"),sTestPath,sFNameNoExt);
+					sTestFile.Format(TEXT("%s\\%s"),sTestPath.GetString(),sFNameNoExt.GetString());
 					bMatchFound = TRUE;
 				}
 			}
@@ -3134,19 +3141,19 @@ void CMainDlg::ChangeFolderLanguage() {
 		if (bMatchFound==TRUE) {
 			//::OutputDebugStringW(TEXT("C1"));
 
-			wsprintf(sTargetFile,TEXT("%s.jpg"),sTestFile);
+			sTargetFile.Format(TEXT("%s.jpg"),sTestFile.GetString());
 			if (::PathFileExists(sTargetFile)) {
 				OpenFile(sTargetFile,false);
 			} else {
-				wsprintf(sTargetFile,TEXT("%s.png"),sTestFile);
+				sTargetFile.Format(TEXT("%s.png"),sTestFile.GetString());
 				if (::PathFileExists(sTargetFile)) {
 					OpenFile(sTargetFile,false);
 				} else {
-					wsprintf(sTargetFile,TEXT("%s.jpeg"),sTestFile);
+					sTargetFile.Format(TEXT("%s.jpeg"),sTestFile.GetString());
 					if (::PathFileExists(sTargetFile)) {
 						OpenFile(sTargetFile,false);
 					} else {
-						wsprintf(sTargetFile,TEXT("%s.bmp"),sTestFile);
+						sTargetFile.Format(TEXT("%s.bmp"),sTestFile.GetString());
 						if (::PathFileExists(sTargetFile))
 							OpenFile(sTargetFile,false);
 					}
@@ -3284,9 +3291,9 @@ void CMainDlg::OpenFile(LPCTSTR sFileName, bool bAfterStartup) {
 				} else {
 					// Bookmark point to an image file. Check if exits and ask the user if the launch that instead.
 							
-					TCHAR sParentDir[MAX_PATH];
-					lstrcpy(sParentDir,sFileName);
-					PathRemoveFileSpec(sParentDir);
+					CString sParentDir = sFileName;
+					::PathRemoveFileSpec(sParentDir.GetBuffer());
+					sParentDir.ReleaseBuffer();
 					
 					CString sBookmarkPath = sParentDir + CString(_T("\\")) + sBookmark;
 					if (::PathFileExists(sBookmarkPath)) {
@@ -4480,18 +4487,26 @@ void CMainDlg::EditINIFile(bool bGlobalINI) {
 }
 
 void CMainDlg::UpdateWindowTitle(bool bForce) {
-	static TCHAR s_PrevFileExt[MAX_PATH];
-	static TCHAR s_PrevTitleText[MAX_PATH];
+	// CString instead of fixed MAX_PATH buffers: long file names/paths (> 259 chars) must not
+	// overflow (_stprintf_s with a too small buffer invokes the invalid parameter handler -> crash)
+	static CString s_PrevFileExt;
+	static CString s_PrevTitleText;
 
 	bool bShowFullPathInTitle  = CSettingsProvider::This().ShowFullPathInTitle();
 	LPCTSTR sCurrentFileName = CurrentFileName(!bShowFullPathInTitle);
 	if (sCurrentFileName == NULL || m_pCurrentImage == NULL) {
 		if ((lstrcmpi(_T(JPEGVIEW_TITLE),s_PrevTitleText) != 0) || (bForce == true)) {
-			_stprintf_s(s_PrevTitleText, MAX_PATH, _T("%s"),_T(JPEGVIEW_TITLE));
+			s_PrevTitleText = _T(JPEGVIEW_TITLE);
 			this->SetWindowText(_T(JPEGVIEW_TITLE));
 		}
 	} else {
 		CString sWindowText =  sCurrentFileName;
+        if (m_bIsRunningUnderWine && bShowFullPathInTitle) {
+            CString sUnixPath = Helpers::GetUnixPathFromWine(sCurrentFileName);
+            if (!sUnixPath.IsEmpty()) {
+				sWindowText = sUnixPath;
+            }
+        }
 		sWindowText += Helpers::GetMultiframeIndex(m_pCurrentImage);
 		if (CSettingsProvider::This().ShowEXIFDateInTitle()) {
 			CEXIFReader* pEXIF = m_pCurrentImage->GetEXIFReader();
@@ -4505,7 +4520,7 @@ void CMainDlg::UpdateWindowTitle(bool bForce) {
 		sWindowText += " - " + CString(JPEGVIEW_TITLE);
 
 		if (lstrcmpi(sWindowText,s_PrevTitleText) != 0) {
-			_stprintf_s(s_PrevTitleText, MAX_PATH, _T("%s"),sWindowText);
+			s_PrevTitleText = sWindowText;
 			this->SetWindowText(sWindowText);
 		}
 	}
@@ -4540,15 +4555,15 @@ void CMainDlg::UpdateWindowTitle(bool bForce) {
 	
 			if ((lstrcmpi(pExt,s_PrevFileExt) != 0) || (bForce == true)) {
 				if (*pExt != '\0') {
-					wsprintf(s_PrevFileExt, _T("%s"),pExt);
-	
+					s_PrevFileExt = pExt;
+
 					if (SHGetFileInfo(sCurrentFilePath,0,&shfi,sizeof(SHFILEINFO),SHGFI_ICON|SHGFI_USEFILEATTRIBUTES))
 						hIconBig = shfi.hIcon;
 					
 					if (SHGetFileInfo(sCurrentFilePath,0,&shfi,sizeof(SHFILEINFO),SHGFI_ICON|SHGFI_SMALLICON|SHGFI_USEFILEATTRIBUTES))
 						hIconSmall = shfi.hIcon;
 				} else {
-					*s_PrevFileExt = '\0';
+					s_PrevFileExt.Empty();
 				}
 	
 				if (hIconBig == NULL)
@@ -5011,16 +5026,17 @@ CString CMainDlg::LoadBookmark(LPCTSTR sFilePath) {
 
 	LPCTSTR sFileExt = PathFindExtension(sFilePath);
 
-	TCHAR sKeyname[MAX_PATH];
-	lstrcpy(sKeyname,sFilePath);
+	CString sKeyname = sFilePath;
+	LPTSTR pKeyname = sKeyname.GetBuffer();
 
 	if ((lstrcmpi(sFileExt,_T(".cbz")) == 0) || (lstrcmpi(sFileExt,_T(".cbr")) == 0) || (lstrcmpi(sFileExt,_T(".cb7")) == 0)) {
-		PathRemoveExtension(sKeyname);	// Removes the file name extension from a path, if one is present.
-		PathStripPath(sKeyname);
+		PathRemoveExtension(pKeyname);	// Removes the file name extension from a path, if one is present.
+		PathStripPath(pKeyname);
 	} else {
-		PathRemoveFileSpec(sKeyname);	// Removes the last element in a path string, whether that element is a file name or a directory name. The element's leading backslash is also removed.
-		PathStripPath(sKeyname);
+		PathRemoveFileSpec(pKeyname);	// Removes the last element in a path string, whether that element is a file name or a directory name. The element's leading backslash is also removed.
+		PathStripPath(pKeyname);
 	}
+	sKeyname.ReleaseBuffer();
 
 	CString sKeynameCleaned = ReplaceNoCase(sKeyname,TEXT(" [en]"),TEXT(""));
 	sKeynameCleaned.Replace('[','<');
@@ -5054,22 +5070,23 @@ void CMainDlg::SaveBookmark() {
 
 			// Now we know the path of the bookmark file for JPEGView
 			if (::PathFileExists(BookmarkFolderPath)) {
-				TCHAR sKeyname[MAX_PATH];
-				lstrcpy(sKeyname,sFilePath);
+				CString sKeyname = sFilePath;
+				LPTSTR pKeyname = sKeyname.GetBuffer();
 				LPCTSTR sFileExt = PathFindExtension(sFilePath);
 				if ((lstrcmpi(sFileExt,_T(".cbz")) == 0) || (lstrcmpi(sFileExt,_T(".cbr")) == 0) || (lstrcmpi(sFileExt,_T(".cb7")) == 0)) {
-					PathRemoveExtension(sKeyname);	// Removes the file name extension from a path, if one is present.
-					PathStripPath(sKeyname);
+					PathRemoveExtension(pKeyname);	// Removes the file name extension from a path, if one is present.
+					PathStripPath(pKeyname);
 				} else {
-					PathRemoveFileSpec(sKeyname);	// Removes the last element in a path string, whether that element is a file name or a directory name. The element's leading backslash is also removed.
-					PathStripPath(sKeyname);
+					PathRemoveFileSpec(pKeyname);	// Removes the last element in a path string, whether that element is a file name or a directory name. The element's leading backslash is also removed.
+					PathStripPath(pKeyname);
 				}
+				sKeyname.ReleaseBuffer();
 
 				CString sKeynameCleaned = ReplaceNoCase(sKeyname,TEXT(" [en]"),TEXT(""));	// store bookmark independent of language tag. Todo: Add more tags.
 				sKeynameCleaned.Replace('[','<');
 				sKeynameCleaned.Replace(']','>');
 
-				TCHAR sValueNew[MAX_PATH];
+				CString sValueNew; // CString: initialized empty (was an uninitialized buffer for cbz without multiple images)
 				if ((lstrcmpi(sFileExt,_T(".cbz")) == 0) || (lstrcmpi(sFileExt,_T(".cbr")) == 0) || (lstrcmpi(sFileExt,_T(".cb7")) == 0)) {
 					// In a cbz/cbr/cb7 archive, the new ini value equals the position in the archive
 					if (m_pCurrentImage && m_pCurrentImage->ContainerHasMultipleImages()) {
@@ -5077,16 +5094,17 @@ void CMainDlg::SaveBookmark() {
 						int nCurrentFrame = m_pCurrentImage->FrameIndex();
 						if ((nCurrentFrame > 0) && (nCurrentFrame < m_pCurrentImage->NumberOfFrames() - 1))
 							bIsEndpoint = false;
-						swprintf(sValueNew,MAX_PATH,TEXT("%d"), nCurrentFrame+1);
+						sValueNew.Format(TEXT("%d"), nCurrentFrame+1);
 					}
 				} else {
 					// In a comic book folder, the new ini value equals the image file name.
-					lstrcpy(sValueNew,sFilePath);
-					PathStripPath(sValueNew);
+					sValueNew = sFilePath;
+					::PathStripPath(sValueNew.GetBuffer());
+					sValueNew.ReleaseBuffer();
 					bIsEndpoint = m_pFileList->IsEndpoint();
 				}
 
-				CString sValueNewCS = CString(sValueNew);
+				CString sValueNewCS = sValueNew;
 				sValueNewCS.Replace('[','<');
 				sValueNewCS.Replace(']','>');
 

@@ -16,7 +16,7 @@ float ScreenScaling = -1.0f;
 TCHAR CReplacePipe::sm_buffer[MAX_SIZE_REPLACE_PIPE];
 
 CReplacePipe::CReplacePipe(LPCTSTR sText) {
-	_tcsncpy_s(sm_buffer, MAX_SIZE_REPLACE_PIPE, sText, MAX_SIZE_REPLACE_PIPE);
+	_tcsncpy_s(sm_buffer, MAX_SIZE_REPLACE_PIPE, sText, _TRUNCATE); // _TRUNCATE: a too long text must not trigger the invalid parameter handler
 	sm_buffer[MAX_SIZE_REPLACE_PIPE-1] = 0;
 	TCHAR* pPtr = sm_buffer;
 	while (*pPtr != 0) {
@@ -93,14 +93,70 @@ CSize GetImageRect(int nWidth, int nHeight, int nScreenWidth, int nScreenHeight,
 	return size;
 }
 
+<<<<<<< HEAD
 // Returns the locale that matches the language selected in JPEGView, not the
 // Windows locale. Otherwise the date is localized with the system locale (e.g.
 // Chinese characters) even though the UI strings are e.g. Arabic.
+=======
+// Design decision: always show the time in 24h format, independent of the
+// Windows locale. Set to false to follow the locale's own time format
+// (e.g. "3:45 PM" for en-US).
+static const bool kForce24HourTime = true;
+
+struct LanguageMapping {
+	LPCTSTR languageCode;
+	LANGID languageId;
+};
+
+// Maps the language selected in JPEGView to a Windows LANGID.
+// Keep in sync with the language files shipped with JPEGView.
+static const LanguageMapping kLanguageMappings[] = {
+	{ _T("en"),     MAKELANGID(LANG_ENGLISH, SUBLANG_DEFAULT) },
+	// Plain "ar" would default to the Hijri calendar, so use the Egyptian
+	// sublanguage, which uses the Gregorian calendar.
+	{ _T("ar"),     MAKELANGID(LANG_ARABIC, SUBLANG_ARABIC_EGYPT) },
+	{ _T("be"),     MAKELANGID(LANG_BELARUSIAN, SUBLANG_DEFAULT) },
+	{ _T("bg"),     MAKELANGID(LANG_BULGARIAN, SUBLANG_DEFAULT) },
+	{ _T("cs"),     MAKELANGID(LANG_CZECH, SUBLANG_DEFAULT) },
+	{ _T("de"),     MAKELANGID(LANG_GERMAN, SUBLANG_DEFAULT) },
+	{ _T("el"),     MAKELANGID(LANG_GREEK, SUBLANG_DEFAULT) },
+	{ _T("es-ar"),  MAKELANGID(LANG_SPANISH, SUBLANG_SPANISH_ARGENTINA) },
+	{ _T("es"),     MAKELANGID(LANG_SPANISH, SUBLANG_DEFAULT) },
+	{ _T("eu"),     MAKELANGID(LANG_BASQUE, SUBLANG_DEFAULT) },
+	{ _T("fi"),     MAKELANGID(LANG_FINNISH, SUBLANG_DEFAULT) },
+	{ _T("fr"),     MAKELANGID(LANG_FRENCH, SUBLANG_DEFAULT) },
+	{ _T("hu"),     MAKELANGID(LANG_HUNGARIAN, SUBLANG_DEFAULT) },
+	{ _T("it"),     MAKELANGID(LANG_ITALIAN, SUBLANG_DEFAULT) },
+	{ _T("ja"),     MAKELANGID(LANG_JAPANESE, SUBLANG_DEFAULT) },
+	{ _T("ko"),     MAKELANGID(LANG_KOREAN, SUBLANG_DEFAULT) },
+	{ _T("pl"),     MAKELANGID(LANG_POLISH, SUBLANG_DEFAULT) },
+	{ _T("pt-br"),  MAKELANGID(LANG_PORTUGUESE, SUBLANG_PORTUGUESE_BRAZILIAN) },
+	// SUBLANG_DEFAULT for Portuguese is Brazil, so Portugal needs its own sublanguage
+	{ _T("pt"),     MAKELANGID(LANG_PORTUGUESE, SUBLANG_PORTUGUESE) },
+	{ _T("ro"),     MAKELANGID(LANG_ROMANIAN, SUBLANG_DEFAULT) },
+	{ _T("ru"),     MAKELANGID(LANG_RUSSIAN, SUBLANG_DEFAULT) },
+	{ _T("sk"),     MAKELANGID(LANG_SLOVAK, SUBLANG_DEFAULT) },
+	{ _T("sl"),     MAKELANGID(LANG_SLOVENIAN, SUBLANG_DEFAULT) },
+	// LANG_SERBIAN shares its ID with LANG_CROATIAN and SUBLANG_DEFAULT would
+	// resolve to hr-HR. Use SUBLANG_SERBIAN_CYRILLIC if the sr translation is Cyrillic.
+	{ _T("sr"),     MAKELANGID(LANG_SERBIAN, SUBLANG_SERBIAN_LATIN) },
+	{ _T("sv"),     MAKELANGID(LANG_SWEDISH, SUBLANG_DEFAULT) },
+	{ _T("ta"),     MAKELANGID(LANG_TAMIL, SUBLANG_DEFAULT) },
+	{ _T("tr"),     MAKELANGID(LANG_TURKISH, SUBLANG_DEFAULT) },
+	{ _T("uk"),     MAKELANGID(LANG_UKRAINIAN, SUBLANG_DEFAULT) },
+	{ _T("zh-tw"),  MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_TRADITIONAL) },
+	{ _T("zh"),     MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED) },
+};
+
+// Returns the locale that matches the language selected in JPEGView,
+// not the Windows locale. Otherwise things get messy.
+>>>>>>> 67db6d4cf416a04fc8fc0f33e60d33b7ee85154a
 static LCID GetDateLocale() {
 	LPCTSTR sLanguage = CSettingsProvider::This().Language();
 	if (sLanguage == NULL || _tcsicmp(sLanguage, _T("auto")) == 0)
 		return LOCALE_USER_DEFAULT;
 
+<<<<<<< HEAD
 	LANGID languageId = 0;
 	if (_tcsicmp(sLanguage, _T("en")) == 0)
 		languageId = MAKELANGID(LANG_ENGLISH, SUBLANG_DEFAULT);
@@ -172,15 +228,59 @@ CString SystemTimeToString(const SYSTEMTIME &time) {
 	TCHAR sBufferDate[64];
 	TCHAR sBufferDay[16];
 	TCHAR sBufferTime[64];
+=======
+	for (const auto& mapping : kLanguageMappings) {
+		if (_tcsicmp(sLanguage, mapping.languageCode) == 0) {
+			return MAKELCID(mapping.languageId, SORT_DEFAULT);
+		}
+	}
+
+	return LOCALE_USER_DEFAULT;
+}
+
+CString SystemTimeToString(const SYSTEMTIME& time) {
+	TCHAR sBufferDate[64] = { 0 };
+	TCHAR sBufferDay[16] = { 0 };
+	TCHAR sBufferTime[64] = { 0 };
+
+>>>>>>> 67db6d4cf416a04fc8fc0f33e60d33b7ee85154a
 	LCID locale = GetDateLocale();
 	if (::GetDateFormat(locale, DATE_SHORTDATE, &time, NULL, sBufferDate, 64) == 0) {
 		// The selected language has no usable Windows locale, fall back to the system locale
 		locale = LOCALE_USER_DEFAULT;
+<<<<<<< HEAD
 		::GetDateFormat(locale, DATE_SHORTDATE, &time, NULL, sBufferDate, 64);
 	}
 	::GetDateFormat(locale, 0, &time, _T("ddd"), sBufferDay, 16);
 	::GetTimeFormat(locale, TIME_NOSECONDS, &time, NULL, sBufferTime, 64);
 	return CString(sBufferDay) + _T(" ") + sBufferDate + _T(" ") + sBufferTime;
+=======
+		sBufferDate[0] = 0;
+		::GetDateFormat(locale, DATE_SHORTDATE, &time, NULL, sBufferDate, 64);
+	}
+	::GetDateFormat(locale, 0, &time, _T("ddd"), sBufferDay, 16);
+
+	// Pass no format string and let flags control the output. Combining flags
+	// like TIME_NOSECONDS with a custom format string is invalid and can fail
+	// with ERROR_INVALID_FLAGS. This keeps the locale's own time separator.
+	DWORD timeFlags = TIME_NOSECONDS;
+	if (kForce24HourTime)
+		timeFlags |= TIME_FORCE24HOURFORMAT | TIME_NOTIMEMARKER;
+	::GetTimeFormat(locale, timeFlags, &time, NULL, sBufferTime, 64);
+
+	// Join only the parts that succeeded, so a failed call can't leave
+	// garbage or double spaces in the result
+	CString result;
+	const LPCTSTR parts[] = { sBufferDay, sBufferDate, sBufferTime };
+	for (LPCTSTR part : parts) {
+		if (part[0] == 0)
+			continue;
+		if (!result.IsEmpty())
+			result += _T(" ");
+		result += part;
+	}
+	return result;
+>>>>>>> 67db6d4cf416a04fc8fc0f33e60d33b7ee85154a
 }
 
 CSize GetImageRect(int nWidth, int nHeight, int nScreenWidth, int nScreenHeight, EAutoZoomMode eAutoZoomMode, double & dZoom) {
@@ -294,6 +394,8 @@ static CPUType ProbeSSEorAVX2() {
 		int abcd[4];
 		__cpuid(abcd, 1);
 		if ((abcd[2] & 0x18000000) != 0x18000000) // AVX and OSXSAVE bits
+			return CPU_SSE;
+		if ((abcd[2] & 0x00001000) == 0) // FMA bit: the AVX2 code uses fused multiply-add (_mm256_fmadd_ps)
 			return CPU_SSE;
 		if ((abcd[2] & 0x04000000) == 0) // XSAVE bit, support for xgetbv
 			return CPU_SSE;
@@ -515,7 +617,17 @@ void* FindJPEGMarker(void* pJPEGStream, int nStreamLength, unsigned char nMarker
 
 void* FindEXIFBlock(void* pJPEGStream, int nStreamLength) {
 	uint8* pEXIFBlock = (uint8*)Helpers::FindJPEGMarker(pJPEGStream, nStreamLength, 0xE1);
-	if (pEXIFBlock != NULL && strncmp((const char*)(pEXIFBlock + 4), "Exif", 4) != 0) {
+	if (pEXIFBlock == NULL) {
+		return NULL;
+	}
+	// The segment (marker, length, "Exif\0\0", data) must be completely inside of the stream: the length comes from
+	// the file, and CJPEGImage copies as many bytes as it says
+	const int nAvailable = nStreamLength - (int)(pEXIFBlock - (uint8*)pJPEGStream);
+	if (nAvailable < 10) {
+		return NULL;
+	}
+	const int nSegmentSize = pEXIFBlock[2]*256 + pEXIFBlock[3] + 2;
+	if (nSegmentSize < 10 || nSegmentSize > nAvailable || memcmp(pEXIFBlock + 4, "Exif", 4) != 0) {
 		return NULL;
 	}
 	return pEXIFBlock;
@@ -577,9 +689,14 @@ CString GetJPEGComment(void* pJPEGStream, int nStreamLength) {
 	if (pCommentSeg == NULL) {
 		return CString("");
 	}
+	// marker (2), length (2), comment: the comment must be completely inside of the stream (the length comes from the file)
+	const int nAvailable = nStreamLength - (int)(pCommentSeg - (uint8*)pJPEGStream);
+	if (nAvailable < 4) {
+		return CString("");
+	}
 	pCommentSeg += 2;
 	int nCommentLen = pCommentSeg[0]*256 + pCommentSeg[1] - 2;
-	if (nCommentLen <= 0) {
+	if (nCommentLen <= 0 || nCommentLen > nAvailable - 4) {
 		return CString("");
 	}
 
@@ -840,9 +957,9 @@ LPCTSTR ConvertTransitionEffectToString(ETransitionEffect effect) {
 }
 
 static bool IsInFileEndingList(LPCTSTR sFileEndings, LPCTSTR sEnding, int nStartOffset = 1, int nEndingOffset = -1) {
-	const int BUFFER_SIZE = 256;
-	TCHAR buffer[BUFFER_SIZE];
-	_tcsncpy_s(buffer, BUFFER_SIZE, sFileEndings, _TRUNCATE);
+	// heap copy: a long list of file endings must not be silently cut off
+	CString sBuffer(sFileEndings);
+	LPTSTR buffer = sBuffer.GetBuffer();
 	LPTSTR sStart = buffer, sCurrent = buffer;
 	while (*sCurrent != 0) {
 		while (*sCurrent != 0 && *sCurrent != _T(';')) {
@@ -905,9 +1022,14 @@ bool IsRawImageFormat(LPCTSTR sExt)
 
 // Returns the short form of the path (including the file name)
 CString GetShortFilePath(LPCTSTR sPath) {
-	TCHAR shortPath[MAX_PATH];
-	if (::GetShortPathName(sPath, (LPTSTR)(&shortPath), MAX_PATH) != 0) {
-		return CString(shortPath);
+	DWORD nLen = ::GetShortPathName(sPath, NULL, 0); // required length including terminating 0
+	if (nLen > 0) {
+		CString sShortPath;
+		LPTSTR pBuff = sShortPath.GetBuffer(nLen);
+		DWORD nCopied = ::GetShortPathName(sPath, pBuff, nLen);
+		sShortPath.ReleaseBuffer((nCopied > 0 && nCopied < nLen) ? nCopied : 0);
+		if (!sShortPath.IsEmpty()) return sShortPath;
+		return CString(sPath);
 	} else {
 		int nError = ::GetLastError();
 		return CString(sPath);
@@ -1151,6 +1273,16 @@ bool CanReadAhead(CJPEGImage* pImage) {
 	return true;
 }
 
+bool StillEnoughFree() {
+	MEMORYSTATUSEX memStatus;
+	memStatus.dwLength = sizeof(memStatus);
+	if (!::GlobalMemoryStatusEx(&memStatus) || memStatus.ullTotalPhys == 0) {
+		return true; // not known: no limit, as before
+	}
+	// ullAvailPhys includes the standby list (cached file data that can be reused immediately)
+	return memStatus.ullAvailPhys * 100 >= memStatus.ullTotalPhys * READ_AHEAD_MIN_FREE_PERCENT;
+}
+
 // Based on: https://github.com/sdneon/jpegview.git
 	void BlendAlpha(uint32* pImage32, int nWidth, int nHeight, Helpers::ETransparencyMode nTransparencyMode)
 	{
@@ -1159,7 +1291,7 @@ bool CanReadAhead(CJPEGImage* pImage) {
 			if (nTransparencyMode == Helpers::TP_BLEND_INVERSE) {
 				nTransparency = ~(nTransparency & 0xffffff);
 			}
-			for (int i = 0; i < nWidth * nHeight; ++i) {
+			for (size_t i = 0, n = (size_t)nWidth * nHeight; i < n; ++i) {
 				*pImage32 = AlphaBlendBackground(*pImage32, nTransparency);
 				pImage32++;
 			}
