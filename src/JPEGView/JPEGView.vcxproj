@@ -319,6 +319,7 @@
     <ClCompile Include="Clipboard.cpp" />
     <ClCompile Include="CropCtl.cpp" />
     <ClCompile Include="CropSizeDlg.cpp" />
+    <ClCompile Include="DarkMode.cpp" />
     <ClCompile Include="dcraw_mod.cpp" />
     <ClCompile Include="DesktopWallpaper.cpp" />
     <ClCompile Include="DirectoryWatcher.cpp" />

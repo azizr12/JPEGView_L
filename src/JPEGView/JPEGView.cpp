@@ -7,6 +7,9 @@
 #include "MainDlg.h"
 #include "SettingsProvider.h"
 
+// Dark mode support, implemented in DarkMode.cpp
+namespace DarkMode { void Initialize(); }
+
 #ifdef DEBUG
 #include <dbghelp.h>
 #endif
@@ -217,6 +220,9 @@ int WINAPI _tWinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPTSTR lp
 
 	hRes = _Module.Init(NULL, hInstance);
 	ATLASSERT(SUCCEEDED(hRes));
+
+	// Install the dark mode hook before any window is created
+	DarkMode::Initialize();
 
 	CString sStartupFile = ParseCommandLineForStartupFile(lpstrCmdLine);
 	int nAutostartSlideShow = (sStartupFile.GetLength() == 0) ? 0 : ParseCommandLineForAutostart(lpstrCmdLine);
