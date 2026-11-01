@@ -213,6 +213,9 @@ int WINAPI _tWinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPTSTR lp
 
 	srand(::GetTickCount());
 
+	// Install the dark mode hook and switch Windows to dark mode before any window is created
+	DarkMode::Initialize();
+
 	// this resolves ATL window thunking problem when Microsoft Layer for Unicode (MSLU) is used
 	::DefWindowProc(NULL, 0, 0, 0L);
 
@@ -220,9 +223,6 @@ int WINAPI _tWinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPTSTR lp
 
 	hRes = _Module.Init(NULL, hInstance);
 	ATLASSERT(SUCCEEDED(hRes));
-
-	// Install the dark mode hook before any window is created
-	DarkMode::Initialize();
 
 	CString sStartupFile = ParseCommandLineForStartupFile(lpstrCmdLine);
 	int nAutostartSlideShow = (sStartupFile.GetLength() == 0) ? 0 : ParseCommandLineForAutostart(lpstrCmdLine);

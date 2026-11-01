@@ -3,16 +3,24 @@
 // All dark mode code is kept in this single file. It is controlled by the
 // INI setting [JPEGView] DarkMode=true (dark mode is the default).
 //
-// A CBT hook is installed for the UI thread before the main window is created.
-// The hook applies a dark title bar and a dark color scheme to JPEGView's own
-// dialogs, so no dialog implementation has to be changed.
+// Besides the dark title bar and the dark colors of JPEGView's own dialogs,
+// the undocumented (but widely used) uxtheme "preferred app mode" is enabled.
+// This makes standard Windows controls, the common file dialog and the
+// popup/context menus use the Windows dark theme on Windows 10 1903+.
 
 #include "StdAfx.h"
 #include "SettingsProvider.h"
+
 #include <commctrl.h>
+
+#ifndef _RICHEDIT_VER
+#define _RICHEDIT_VER 0x0210
+#endif
 #include <richedit.h>
 
+#ifdef _MSC_VER
 #pragma comment(lib, "comctl32.lib")
+#endif
 
 namespace DarkMode {
 
@@ -23,9 +31,16 @@ namespace {
 	const COLORREF DARK_TEXT = RGB(230, 230, 230);
 
 	const TCHAR* const DARK_MODE_APPLIED_PROPERTY = _T("JPEGViewDarkModeApplied");
+	const UINT_PTR DARK_MODE_REFRESH_TIMER_ID = 0xD4A7;
 
 	typedef HRESULT (WINAPI *DwmSetWindowAttributeFunc)(HWND, DWORD, LPCVOID, DWORD);
 	typedef HRESULT (WINAPI *SetWindowThemeFunc)(HWND, LPCWSTR, LPCWSTR);
+
+	// Undocumented uxtheme.dll functions used for the Windows dark mode
+	typedef int (WINAPI *SetPreferredAppModeFunc)(int);
+	typedef BOOL (WINAPI *AllowDarkModeForWindowFunc)(HWND, BOOL);
+	typedef void (WINAPI *FlushMenuThemesFunc)();
+	typedef void (WINAPI *RefreshImmersiveColorPolicyStateFunc)();
 
 	bool s_bInitialized = false;
 	bool s_bEnabled = true;
@@ -33,8 +48,12 @@ namespace {
 	HWND s_hMainWindow = NULL;
 	HBRUSH s_hBackgroundBrush = NULL;
 	HBRUSH s_hEditBackgroundBrush = NULL;
+
 	DwmSetWindowAttributeFunc s_pDwmSetWindowAttribute = NULL;
 	SetWindowThemeFunc s_pSetWindowTheme = NULL;
+	SetPreferredAppModeFunc s_pSetPreferredAppMode = NULL;
+	AllowDarkModeForWindowFunc s_pAllowDarkModeForWindow = NULL;
+	FlushMenuThemesFunc s_pFlushMenuThemes = NULL;
 
 	bool ParseBool(LPCTSTR sValue) {
 		return _tcsicmp(sValue, _T("true")) == 0 ||
@@ -53,7 +72,7 @@ namespace {
 
 		if (sUserIni != NULL && sUserIni[0] != 0) {
 			sValue[0] = 0;
-			if (::GetPrivateProfileString(_T("JPEGView"), _T("DarkMode"), _T(""), sValue, _countof(sValue), sUserIni) > 0) {
+			if (::GetPrivateProfileString(_T("JPEGView"), _T("DarkMode"), _T(""), sValue, ARRAYSIZE(sValue), sUserIni) > 0) {
 				return ParseBool(sValue);
 			}
 		}
@@ -61,7 +80,7 @@ namespace {
 		if (sGlobalIni != NULL && sGlobalIni[0] != 0 &&
 			(sUserIni == NULL || _tcsicmp(sUserIni, sGlobalIni) != 0)) {
 			sValue[0] = 0;
-			if (::GetPrivateProfileString(_T("JPEGView"), _T("DarkMode"), _T(""), sValue, _countof(sValue), sGlobalIni) > 0) {
+			if (::GetPrivateProfileString(_T("JPEGView"), _T("DarkMode"), _T(""), sValue, ARRAYSIZE(sValue), sGlobalIni) > 0) {
 				return ParseBool(sValue);
 			}
 		}
@@ -70,15 +89,21 @@ namespace {
 	}
 
 	bool IsTopLevelWindow(HWND hWnd) {
-		return hWnd != NULL && (::GetWindowLong(hWnd, GWL_STYLE) & WS_CHILD) == 0;
+		return hWnd != NULL && (::GetWindowLongPtr(hWnd, GWL_STYLE) & WS_CHILD) == 0;
 	}
 
 	bool IsDialogWindow(HWND hWnd) {
 		TCHAR sClassName[64];
-		if (::GetClassName(hWnd, sClassName, _countof(sClassName)) == 0) {
+		if (::GetClassName(hWnd, sClassName, ARRAYSIZE(sClassName)) == 0) {
 			return false;
 		}
 		return _tcsicmp(sClassName, _T("#32770")) == 0;
+	}
+
+	void AllowDarkModeForWindow(HWND hWnd) {
+		if (s_pAllowDarkModeForWindow != NULL) {
+			s_pAllowDarkModeForWindow(hWnd, TRUE);
+		}
 	}
 
 	void ApplyDarkTitleBar(HWND hWnd) {
@@ -97,7 +122,7 @@ namespace {
 	void ApplyDarkModeToRichEdit(HWND hWnd) {
 		::SendMessage(hWnd, EM_SETBKGNDCOLOR, 0, (LPARAM)DARK_EDIT_BACKGROUND);
 
-		CHARFORMAT2 charFormat;
+		CHARFORMAT charFormat;
 		memset(&charFormat, 0, sizeof(charFormat));
 		charFormat.cbSize = sizeof(charFormat);
 		charFormat.dwMask = CFM_COLOR;
@@ -113,12 +138,13 @@ namespace {
 	}
 
 	BOOL CALLBACK ApplyDarkModeToChildProc(HWND hWnd, LPARAM /*lParam*/) {
+		AllowDarkModeForWindow(hWnd);
 		if (s_pSetWindowTheme != NULL) {
 			s_pSetWindowTheme(hWnd, L"DarkMode_Explorer", NULL);
 		}
 
 		TCHAR sClassName[64];
-		if (::GetClassName(hWnd, sClassName, _countof(sClassName)) > 0) {
+		if (::GetClassName(hWnd, sClassName, ARRAYSIZE(sClassName)) > 0) {
 			if (_tcsicmp(sClassName, _T("SysListView32")) == 0) {
 				::SendMessage(hWnd, LVM_SETBKCOLOR, 0, (LPARAM)DARK_EDIT_BACKGROUND);
 				::SendMessage(hWnd, LVM_SETTEXTBKCOLOR, 0, (LPARAM)DARK_EDIT_BACKGROUND);
@@ -161,6 +187,16 @@ namespace {
 			::SetBkMode(hDC, OPAQUE);
 			return (LRESULT)s_hEditBackgroundBrush;
 		}
+		case WM_TIMER:
+			if (wParam == DARK_MODE_REFRESH_TIMER_ID) {
+				// Some windows (for example the common file dialog) create parts of
+				// their UI after they were activated. Apply the theme once more.
+				::KillTimer(hWnd, DARK_MODE_REFRESH_TIMER_ID);
+				::EnumChildWindows(hWnd, ApplyDarkModeToChildProc, 0);
+				::RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+				return 0;
+			}
+			break;
 		default:
 			break;
 		}
@@ -173,6 +209,7 @@ namespace {
 		}
 		::SetProp(hWnd, DARK_MODE_APPLIED_PROPERTY, (HANDLE)1);
 
+		AllowDarkModeForWindow(hWnd);
 		ApplyDarkTitleBar(hWnd);
 		if (s_pSetWindowTheme != NULL) {
 			s_pSetWindowTheme(hWnd, L"DarkMode_Explorer", NULL);
@@ -183,6 +220,7 @@ namespace {
 			// Paint the dialog background and the text of its child controls dark
 			::SetWindowSubclass(hWnd, DarkModeSubclassProc, 1, 0);
 			::RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+			::SetTimer(hWnd, DARK_MODE_REFRESH_TIMER_ID, 150, NULL);
 		}
 	}
 
@@ -219,14 +257,39 @@ namespace {
 		s_hBackgroundBrush = ::CreateSolidBrush(DARK_BACKGROUND);
 		s_hEditBackgroundBrush = ::CreateSolidBrush(DARK_EDIT_BACKGROUND);
 
-		// Both functions are loaded dynamically to keep compatibility with older Windows versions
+		// Both modules are loaded dynamically to keep compatibility with older Windows versions
 		HMODULE hDwmapi = ::LoadLibrary(_T("dwmapi.dll"));
 		if (hDwmapi != NULL) {
 			s_pDwmSetWindowAttribute = (DwmSetWindowAttributeFunc)::GetProcAddress(hDwmapi, "DwmSetWindowAttribute");
 		}
+
 		HMODULE hUxTheme = ::LoadLibrary(_T("uxtheme.dll"));
 		if (hUxTheme != NULL) {
 			s_pSetWindowTheme = (SetWindowThemeFunc)::GetProcAddress(hUxTheme, "SetWindowTheme");
+
+			// Ordinals from uxtheme.dll. They are not officially documented, but are
+			// widely used to activate the Windows dark mode for standard controls and menus.
+			// 135: SetPreferredAppMode (PreferredAppMode 2 == ForceDark)
+			// 133: AllowDarkModeForWindow
+			// 136: FlushMenuThemes
+			// 104: RefreshImmersiveColorPolicyState
+			s_pSetPreferredAppMode = (SetPreferredAppModeFunc)::GetProcAddress(hUxTheme, MAKEINTRESOURCEA(135));
+			s_pAllowDarkModeForWindow = (AllowDarkModeForWindowFunc)::GetProcAddress(hUxTheme, MAKEINTRESOURCEA(133));
+			s_pFlushMenuThemes = (FlushMenuThemesFunc)::GetProcAddress(hUxTheme, MAKEINTRESOURCEA(136));
+			RefreshImmersiveColorPolicyStateFunc pRefreshImmersiveColorPolicyState =
+				(RefreshImmersiveColorPolicyStateFunc)::GetProcAddress(hUxTheme, MAKEINTRESOURCEA(104));
+			if (pRefreshImmersiveColorPolicyState != NULL) {
+				pRefreshImmersiveColorPolicyState();
+			}
+		}
+
+		// This must happen before the first window is created so that the standard
+		// Windows controls, the file open dialog and the popup menus use the dark theme.
+		if (s_pSetPreferredAppMode != NULL) {
+			s_pSetPreferredAppMode(2); // ForceDark
+		}
+		if (s_pFlushMenuThemes != NULL) {
+			s_pFlushMenuThemes();
 		}
 
 		s_hCbtHook = ::SetWindowsHookEx(WH_CBT, CbtHookProc, NULL, ::GetCurrentThreadId());
