@@ -8,104 +8,6 @@
 #include "MaxImageDef.h"
 #include "ICCProfileTransform.h"
 
-static bool IsTiffHeader(const uint8_t* p) {
-	return (p[0] == 'I' && p[1] == 'I' && p[2] == 0x2A && p[3] == 0x00) ||
-		(p[0] == 'M' && p[1] == 'M' && p[2] == 0x00 && p[3] == 0x2A);
-}
-
-// The Exif box payload starts with a 4-byte big endian offset to the TIFF header.
-// Some encoders also (incorrectly) include the "Exif\0\0" prefix, so handle both.
-static void GetJxlTiffData(const std::vector<uint8_t>& exif, const uint8_t*& tiff, size_t& tiff_size) {
-	tiff = NULL;
-	tiff_size = 0;
-	if (exif.size() < 8)
-		return;
-
-	const uint8_t* p = exif.data();
-	size_t n = exif.size();
-	if (n >= 14 && !memcmp(p, "Exif\0\0", 6)) {
-		tiff = p + 6;
-		tiff_size = n - 6;
-		return;
-	}
-
-	size_t candidates[3];
-	int count = 0;
-	size_t offset = ((size_t)p[0] << 24) | ((size_t)p[1] << 16) | ((size_t)p[2] << 8) | p[3];
-	// Offsets are relative to the byte after the offset field, but also accept
-	// offsets relative to the payload start.
-	if (4 + offset + 8 <= n)
-		candidates[count++] = 4 + offset;
-	if (offset + 8 <= n && offset != 4 + offset)
-		candidates[count++] = offset;
-	candidates[count++] = 0;
-
-	for (int i = 0; i < count; i++) {
-		size_t start = candidates[i];
-		if (IsTiffHeader(p + start)) {
-			tiff = p + start;
-			tiff_size = n - start;
-			return;
-		}
-	}
-}
-
-// Reads the Exif box of a JPEG XL container without decoding the image. This has
-// to be a separate pass because the Exif box can be located before the codestream
-// (and therefore before any image data is available to the main decoder).
-static bool ReadJxlExif(const uint8_t* jxl_data, size_t size, std::vector<uint8_t>& exif) {
-	JxlDecoderPtr decoder = JxlDecoderMake(nullptr);
-	if (!decoder)
-		return false;
-	if (JXL_DEC_SUCCESS != JxlDecoderSubscribeEvents(decoder.get(), JXL_DEC_BOX | JXL_DEC_BOX_COMPLETE))
-		return false;
-	JxlDecoderSetDecompressBoxes(decoder.get(), JXL_TRUE);
-	JxlDecoderSetInput(decoder.get(), jxl_data, size);
-	JxlDecoderCloseInput(decoder.get());
-
-	const size_t kChunkSize = 65536;
-	size_t output_pos = 0;
-	bool reading_exif = false;
-
-	for (;;) {
-		JxlDecoderStatus status = JxlDecoderProcessInput(decoder.get());
-		if (status == JXL_DEC_ERROR || status == JXL_DEC_NEED_MORE_INPUT) {
-			return false;
-		} else if (status == JXL_DEC_BOX) {
-			if (reading_exif) {
-				size_t remaining = JxlDecoderReleaseBoxBuffer(decoder.get());
-				exif.resize(exif.size() - remaining);
-				return !exif.empty();
-			}
-			JxlBoxType type;
-			if (JXL_DEC_SUCCESS != JxlDecoderGetBoxType(decoder.get(), type, JXL_TRUE))
-				return false;
-			if (!memcmp(type, "Exif", 4)) {
-				reading_exif = true;
-				exif.resize(kChunkSize);
-				JxlDecoderSetBoxBuffer(decoder.get(), exif.data(), exif.size());
-			}
-		} else if (status == JXL_DEC_BOX_NEED_MORE_OUTPUT) {
-			if (!reading_exif)
-				return false;
-			size_t remaining = JxlDecoderReleaseBoxBuffer(decoder.get());
-			output_pos += kChunkSize - remaining;
-			exif.resize(exif.size() + kChunkSize);
-			JxlDecoderSetBoxBuffer(decoder.get(), exif.data() + output_pos, exif.size() - output_pos);
-		} else if (status == JXL_DEC_BOX_COMPLETE) {
-			if (reading_exif) {
-				size_t remaining = JxlDecoderReleaseBoxBuffer(decoder.get());
-				exif.resize(exif.size() - remaining);
-				return !exif.empty();
-			}
-		} else if (status == JXL_DEC_SUCCESS) {
-			return false;
-		} else {
-			return false;
-		}
-	}
-}
-
 static int CountJxlFrames(const uint8_t* jxl_data, size_t size) {
     auto decoder = JxlDecoderMake(nullptr);
     if (!decoder) return 1;
@@ -141,7 +43,6 @@ struct JxlReader::jxl_cache {
 	int height;
 	void* transform;
 	std::vector<uint8_t> exif;
-	bool exif_read;
 	int total_frames;
 };
 
@@ -159,8 +60,13 @@ bool JxlReader::DecodeJpegXlOneShot(const uint8_t* jxl, size_t size, std::vector
 		if (JXL_DEC_SUCCESS !=
 			JxlDecoderSubscribeEvents(cache.decoder.get(), JXL_DEC_BASIC_INFO |
 				JXL_DEC_COLOR_ENCODING |
+				JXL_DEC_BOX |
 				JXL_DEC_FRAME |
 				JXL_DEC_FULL_IMAGE)) {
+			return false;
+		}
+
+		if (JXL_DEC_SUCCESS != JxlDecoderSetDecompressBoxes(cache.decoder.get(), JXL_TRUE)) {
 			return false;
 		}
 
@@ -178,6 +84,8 @@ bool JxlReader::DecodeJpegXlOneShot(const uint8_t* jxl, size_t size, std::vector
 
 	JxlBasicInfo info;
 	JxlPixelFormat format = { 4, JXL_TYPE_UINT8, JXL_NATIVE_ENDIAN, 0 };
+	const constexpr size_t kChunkSize = 65536;
+	size_t output_pos = 0;
 
 	bool loop_check = false;
 	for (;;) {
@@ -267,6 +175,32 @@ bool JxlReader::DecodeJpegXlOneShot(const uint8_t* jxl, size_t size, std::vector
 			JxlDecoderSubscribeEvents(cache.decoder.get(), JXL_DEC_FRAME | JXL_DEC_FULL_IMAGE);
 			JxlDecoderSetInput(cache.decoder.get(), cache.data, cache.data_size);
 			JxlDecoderCloseInput(cache.decoder.get());
+		} else if (status == JXL_DEC_BOX) {
+			if (!cache.exif.empty()) {
+				size_t remaining = JxlDecoderReleaseBoxBuffer(cache.decoder.get());
+				cache.exif.resize(cache.exif.size() - remaining);
+			} else {
+				JxlBoxType type;
+				if (JXL_DEC_SUCCESS !=
+					JxlDecoderGetBoxType(cache.decoder.get(), type, true)) {
+					return false;
+				}
+				if (!memcmp(type, "Exif", 4)) {
+					cache.exif.resize(kChunkSize);
+					JxlDecoderSetBoxBuffer(cache.decoder.get(), cache.exif.data(), cache.exif.size());
+				}
+			}
+		} else if (status == JXL_DEC_BOX_NEED_MORE_OUTPUT) {
+			size_t remaining = JxlDecoderReleaseBoxBuffer(cache.decoder.get());
+			output_pos += kChunkSize - remaining;
+			cache.exif.resize(cache.exif.size() + kChunkSize);
+			JxlDecoderSetBoxBuffer(cache.decoder.get(), cache.exif.data() + output_pos, cache.exif.size() - output_pos);
+		} else if (status == JXL_DEC_BOX_COMPLETE) {
+			if (!cache.exif.empty()) {
+				size_t remaining = JxlDecoderReleaseBoxBuffer(cache.decoder.get());
+				cache.exif.resize(cache.exif.size() - remaining);
+				return true;
+			}
 		} else {
 			return false;
 		}
@@ -315,23 +249,12 @@ void* JxlReader::ReadImage(int& width,
 	}
 
 	// Copy Exif data into the format understood by CEXIFReader
-	if (!cache.exif_read) {
-		ReadJxlExif((const uint8_t*)buffer, sizebytes, cache.exif);
-		cache.exif_read = true;
-	}
-	const uint8_t* tiff = NULL;
-	size_t tiff_size = 0;
-	GetJxlTiffData(cache.exif, tiff, tiff_size);
-	if (tiff != NULL && tiff_size > 8 && tiff_size + 8 <= 65533) {
-		exif_chunk = malloc(tiff_size + 10);
+	if (!cache.exif.empty() && cache.exif.size() > 8 && cache.exif.size() < 65532) {
+		exif_chunk = malloc(cache.exif.size() + 6);
 		if (exif_chunk != NULL) {
-			uint8_t* chunk = (uint8_t*)exif_chunk;
-			uint16_t app1_size = _byteswap_ushort((uint16_t)(tiff_size + 8));
-			chunk[0] = 0xFF;
-			chunk[1] = 0xE1;
-			memcpy(chunk + 2, &app1_size, 2);
-			memcpy(chunk + 4, "Exif\0\0", 6);
-			memcpy(chunk + 10, tiff, tiff_size);
+			memcpy(exif_chunk, "\xFF\xE1\0\0Exif\0\0", 10);
+			*((unsigned short*)exif_chunk + 1) = _byteswap_ushort(cache.exif.size() + 4);
+			memcpy((uint8_t*)exif_chunk + 10, cache.exif.data() + 4, cache.exif.size() - 4);
 		}
 	}
 
