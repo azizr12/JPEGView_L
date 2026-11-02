@@ -856,14 +856,16 @@ void CImageLoadThread::ProcessReadJXLRequest(CRequest* request) {
 		if (bUseCachedDecoder || (::ReadFile(hFile, pBuffer, nFileSize, (LPDWORD)&nNumBytesRead, NULL) && nNumBytesRead == nFileSize)) {
 			int nWidth, nHeight, nBPP, nFrameCount, nFrameTimeMs;
 			bool bHasAnimation;
+			bool bHasAlpha;
 			void* pEXIFData = NULL;
-			uint8* pPixelData = (uint8*)JxlReader::ReadImage(nWidth, nHeight, nBPP, bHasAnimation, nFrameCount, nFrameTimeMs, pEXIFData, request->OutOfMemory, pBuffer, nFileSize);
+			uint8* pPixelData = (uint8*)JxlReader::ReadImage(nWidth, nHeight, nBPP, bHasAnimation, nFrameCount, nFrameTimeMs, pEXIFData, request->OutOfMemory, bHasAlpha, pBuffer, nFileSize);
 			if (pPixelData != NULL) {
 				if (bHasAnimation) {
 					m_sLastJxlFileName = sFileName;
 					}
 				// Multiply alpha value into each AABBGGRR pixel
-				Helpers::BlendAlpha((uint32*)pPixelData, nWidth, nHeight, request->ProcessParams.TransparencyMode);
+				if (bHasAlpha)
+					Helpers::BlendAlpha((uint32*)pPixelData, nWidth, nHeight, request->ProcessParams.TransparencyMode);
 				request->Image = new CJPEGImage(nWidth, nHeight, pPixelData, pEXIFData, 4, 0, IF_JXL, bHasAnimation, request->FrameIndex, nFrameCount, nFrameTimeMs);
 				free(pEXIFData);
 			} else {
@@ -1411,8 +1413,9 @@ Note on "request->FrameIndex":
 					{
 						int nWidth, nHeight, nBPP, nFrameCount, nFrameTimeMs;
 						bool bHasAnimation = false;
+						bool bHasAlpha = false;
 						void* pEXIFData = NULL;
-						uint8* pPixelData = (uint8*)JxlReader::ReadImage(nWidth, nHeight, nBPP, bHasAnimation, nFrameCount, nFrameTimeMs, pEXIFData, request->OutOfMemory, pBuffer, nFileSize);
+						uint8* pPixelData = (uint8*)JxlReader::ReadImage(nWidth, nHeight, nBPP, bHasAnimation, nFrameCount, nFrameTimeMs, pEXIFData, request->OutOfMemory, bHasAlpha, pBuffer, nFileSize);
 						if (pPixelData != NULL) {
 							if (bHasAnimation) {
 								bZipBufferHandedOver = true; // Decoder caches buffer. Don't free.
@@ -1420,7 +1423,8 @@ Note on "request->FrameIndex":
 							}
 
 							// Multiply alpha value into each AABBGGRR pixel
-							Helpers::BlendAlpha((uint32*)pPixelData, nWidth, nHeight, request->ProcessParams.TransparencyMode);
+							if (bHasAlpha)
+								Helpers::BlendAlpha((uint32*)pPixelData, nWidth, nHeight, request->ProcessParams.TransparencyMode);
 							request->Image = new CJPEGImage(nWidth, nHeight, pPixelData, pEXIFData, 4, 0, IF_JXL, EXTRA_MANGA_PARAMS);
 							free(pEXIFData);
 							if (request->Image) bSuccess = true;
