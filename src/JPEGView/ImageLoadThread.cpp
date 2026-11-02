@@ -815,76 +815,93 @@ void CImageLoadThread::ProcessReadPNGRequest(CRequest* request) {
 
 void CImageLoadThread::ProcessReadJXLRequest(CRequest* request) {
 	bool bUseCachedDecoder = false;
-	const wchar_t* sFileName;
-	sFileName = (const wchar_t*)request->FileName;
+	const wchar_t* sFileName = (const wchar_t*)request->FileName;
 
-
+	// Check if we are continuing an animation or loading a new file
 	if (sFileName != m_sLastJxlFileName) {
 		DeleteCachedJxlDecoder();
 	} else {
 		bUseCachedDecoder = true;
 	}
 	
-	HANDLE hFile;
+	HANDLE hFile = INVALID_HANDLE_VALUE;
 	if (!bUseCachedDecoder) {
 		hFile = ::CreateFile(request->FileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
 		if (hFile == INVALID_HANDLE_VALUE) {
 			return;
 		}
 	}
+
 	char* pBuffer = NULL;
 	UINT nPrevErrorMode = SetErrorMode(SEM_FAILCRITICALERRORS);
+	
 	try {
 		long long nFileSize = 0;
 		unsigned int nNumBytesRead = 0;
+		
 		if (!bUseCachedDecoder) {
-			// Don't read too huge files
 			nFileSize = Helpers::GetFileSize(hFile);
-			if (nFileSize > MAX_JXL_FILE_SIZE) {
-				request->OutOfMemory = true;
+			if (nFileSize > MAX_JXL_FILE_SIZE || nFileSize <= 0) {
+				request->OutOfMemory = (nFileSize > MAX_JXL_FILE_SIZE);
 				::CloseHandle(hFile);
 				return;
 			}
 
-			pBuffer = new(std::nothrow) char[nFileSize];
+			pBuffer = new(std::nothrow) char[(size_t)nFileSize];
 			if (pBuffer == NULL) {
 				request->OutOfMemory = true;
 				::CloseHandle(hFile);
 				return;
 			}
-		}
-		if (bUseCachedDecoder || (::ReadFile(hFile, pBuffer, nFileSize, (LPDWORD)&nNumBytesRead, NULL) && nNumBytesRead == nFileSize)) {
-			int nWidth, nHeight, nBPP, nFrameCount, nFrameTimeMs;
-			bool bHasAnimation;
-			void* pEXIFData = NULL;
-			uint8* pPixelData = (uint8*)JxlReader::ReadImage(nWidth, nHeight, nBPP, bHasAnimation, nFrameCount, nFrameTimeMs, pEXIFData, request->OutOfMemory, pBuffer, nFileSize);
-			if (pPixelData != NULL) {
-				if (bHasAnimation) {
-					m_sLastJxlFileName = sFileName;
-					}
-				// Multiply alpha value into each AABBGGRR pixel
-				Helpers::BlendAlpha((uint32*)pPixelData, nWidth, nHeight, request->ProcessParams.TransparencyMode);
-				request->Image = new CJPEGImage(nWidth, nHeight, pPixelData, pEXIFData, 4, 0, IF_JXL, bHasAnimation, request->FrameIndex, nFrameCount, nFrameTimeMs);
-				free(pEXIFData);
-			} else {
-				DeleteCachedJxlDecoder();
+
+			// Explicitly handle ReadFile failure to prevent handing over a partially read/invalid buffer
+			if (!::ReadFile(hFile, pBuffer, (DWORD)nFileSize, (LPDWORD)&nNumBytesRead, NULL) || nNumBytesRead != nFileSize) {
+				delete[] pBuffer; // Free immediately as it was never handed over to the wrapper
+				pBuffer = NULL;
+				::CloseHandle(hFile);
+				return;
 			}
+		}
+
+		int nWidth = 0, nHeight = 0, nBPP = 0, nFrameCount = 0, nFrameTimeMs = 0;
+		bool bHasAnimation = false;
+		void* pEXIFData = NULL;
+		
+		// JxlReader takes ownership of pBuffer if it is not NULL.
+		// It will free it internally via DeleteCache() when the image is fully processed or cached.
+		uint8* pPixelData = (uint8*)JxlReader::ReadImage(nWidth, nHeight, nBPP, bHasAnimation, nFrameCount, nFrameTimeMs, pEXIFData, request->OutOfMemory, pBuffer, (int)nFileSize);
+		
+		if (pPixelData != NULL) {
+			if (bHasAnimation) {
+				m_sLastJxlFileName = sFileName;
+			}
+			
+			// Multiply alpha value into each AABBGGRR pixel
+			Helpers::BlendAlpha((uint32*)pPixelData, nWidth, nHeight, request->ProcessParams.TransparencyMode);
+			request->Image = new CJPEGImage(nWidth, nHeight, pPixelData, pEXIFData, 4, 0, IF_JXL, bHasAnimation, request->FrameIndex, nFrameCount, nFrameTimeMs);
+			free(pEXIFData);
+		} else {
+			// If ReadImage failed, it should have called DeleteCache() internally.
+			// We call it again here just to ensure the cache state is completely wiped.
+			DeleteCachedJxlDecoder();
 		}
 	}
 	catch (...) {
 		delete request->Image;
 		request->Image = NULL;
 		request->ExceptionError = true;
+		
+		// If an exception occurred, ensure the JXL decoder cache is wiped 
+		// to prevent state corruption and to free pBuffer if it was handed over.
+		DeleteCachedJxlDecoder();
 	}
+	
 	SetErrorMode(nPrevErrorMode);
-	if (!bUseCachedDecoder) {
+	
+	if (!bUseCachedDecoder && hFile != INVALID_HANDLE_VALUE) {
 		::CloseHandle(hFile);
-		// pBuffer is held as a shared resource within JxlReader's static cache.data. 
-		// Calling delete[] here would result in a dangling pointer reference when the next frame
-		// of an animated JXL is requested, or a double-free error during free(cache.data)
-		// inside DeleteCachedJxlDecoder(). 
-		// Memory deallocation is centralized within DeleteCachedJxlDecoder().
-		// delete[] pBuffer;
+		// DO NOT delete[] pBuffer here. 
+		// Ownership was successfully transferred to JxlReader, which manages its lifecycle.
 	}
 }
 

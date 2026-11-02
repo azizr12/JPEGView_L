@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include <vector>
@@ -6,6 +5,14 @@
 class JxlReader
 {
 public:
+	// Called from inside ReadImage while a big still is still decoding.
+	// bgra points to a blurry full-size preview (4 byte BGRA, width*height pixels).
+	// The pointer is only valid during the call: copy the data, don't keep it.
+	typedef void (*PreviewCallback)(const void* bgra, int width, int height, void* user);
+
+	// Optional. Pass cb = NULL to disable. Only stills with at least min_pixels get a preview.
+	static void SetPreviewCallback(PreviewCallback cb, void* user, size_t min_pixels = 4000000);
+
 	// Returns data in 4 byte BGRA
 	static void* ReadImage(int& width,   // width of the image loaded.
 		int& height,  // height of the image loaded.
@@ -23,6 +30,6 @@ public:
 private:
 	struct jxl_cache;
 	static jxl_cache cache;
-	static bool DecodeJpegXlOneShot(const uint8_t* jxl, size_t size, std::vector<uint8_t>* pixels, int& xsize,
+	static bool DecodeJpegXlOneShot(const uint8_t* jxl, size_t size, uint8_t** pixels, int& xsize,
 		int& ysize, bool& have_animation, int& frame_count, int& frame_time, std::vector<uint8_t>* icc_profile, bool& outOfMemory);
 };
