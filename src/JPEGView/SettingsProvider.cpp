@@ -631,14 +631,110 @@ bool CSettingsProvider::ExistsUserINI() {
 	return ::GetFileAttributes(sINIFileName) != INVALID_FILE_ATTRIBUTES;
 }
 
+bool CSettingsProvider::FilesIdentical(LPCTSTR sFile1, LPCTSTR sFile2) {
+	FILE* f1 = NULL;
+	FILE* f2 = NULL;
+	if (_tfopen_s(&f1, sFile1, _T("rb")) != 0) {
+		return false;
+	}
+	if (_tfopen_s(&f2, sFile2, _T("rb")) != 0) {
+		fclose(f1);
+		return false;
+	}
+	bool bIdentical = true;
+	const int LEN = 8192;
+	BYTE buff1[LEN];
+	BYTE buff2[LEN];
+	for (;;) {
+		size_t nRead1 = fread(buff1, 1, LEN, f1);
+		size_t nRead2 = fread(buff2, 1, LEN, f2);
+		if (nRead1 != nRead2 || memcmp(buff1, buff2, nRead1) != 0) {
+			bIdentical = false;
+			break;
+		}
+		if (nRead1 == 0) {
+			break;
+		}
+	}
+	fclose(f1);
+	fclose(f2);
+	return bIdentical;
+}
+
+void CSettingsProvider::MigrateCustomINISettings(LPCTSTR sSourceFile, LPCTSTR sTemplateFile, LPCTSTR sDestFile) {
+	if (::GetFileAttributes(sSourceFile) == INVALID_FILE_ATTRIBUTES) {
+		return; // nothing to migrate
+	}
+
+	// read all "key=value" entries of the section in the source file
+	int bufferSize = 1024 * 2;
+	TCHAR* pBuffer = NULL;
+	int actualSize;
+	do {
+		delete[] pBuffer;
+		bufferSize = bufferSize * 2;
+		pBuffer = new TCHAR[bufferSize];
+		actualSize = ::GetPrivateProfileSection(SECTION_NAME, pBuffer, bufferSize, sSourceFile);
+	} while (actualSize == bufferSize - 2);
+
+	// write only the keys whose value is a diffrent from the template file.
+
+	TCHAR sTemplateValue[1024];
+	TCHAR* current = pBuffer;
+	while (*current != 0) {
+		LPCTSTR posEqual = _tcschr(current, _T('='));
+		if (posEqual != NULL) {
+			CString sKey(current, (int)(posEqual - current));
+			sKey.TrimLeft();
+			sKey.TrimRight();
+			if (!sKey.IsEmpty()) {
+				LPCTSTR sValue = posEqual + 1;
+				::GetPrivateProfileString(SECTION_NAME, sKey, _T(""), sTemplateValue, 1024, sTemplateFile);
+				if (_tcscmp(sValue, sTemplateValue) != 0) {
+					::WritePrivateProfileString(SECTION_NAME, sKey, sValue, sDestFile);
+				}
+			}
+		}
+		current += _tcslen(current) + 1;
+	}
+
+	delete[] pBuffer;
+}
+
 void CSettingsProvider::CopyUserINIFromTemplate() {
 	if (m_bStoreToEXEPath) {
 		return; // no user INI file
 	}
 
 	LPCTSTR sINIFileName = GetUserINIFileName();
+	if (::GetFileAttributes(sINIFileName) != INVALID_FILE_ATTRIBUTES) {
+		return; // user INI file already exists, never overwrite it
+	}
+
 	::CreateDirectory(Helpers::JPEGViewAppDataPath(), NULL);
-	::CopyFile(GetINITemplateName(), sINIFileName, TRUE);
+
+	// copy the template file to a temporary file first
+	// then migrate the custom settings of the global ini file
+	// Only values that differ from the template defaults are migrated,
+
+	CString sTempFile = CString(sINIFileName) + _T(".new");
+	::DeleteFile(sTempFile);
+	if (!::CopyFile(GetINITemplateName(), sTempFile, FALSE)) {
+		return;
+	}
+
+	MigrateCustomINISettings(m_sIniNameGlobal, GetINITemplateName(), sTempFile);
+
+	if (::MoveFile(sTempFile, sINIFileName)) {
+		m_bUserINIExists = true;
+		return;
+	}
+
+	// fallback: plain copy of the template
+	::DeleteFile(sTempFile);
+	if (::CopyFile(GetINITemplateName(), sINIFileName, TRUE)) {
+		m_bUserINIExists = true;
+	}
 }
 
 void CSettingsProvider::UpdateUserSettings() {
@@ -646,43 +742,43 @@ void CSettingsProvider::UpdateUserSettings() {
 		return; // no user INI file
 	}
 
-	CString sINIFileName = CString(GetUserINIFileName());
-	::DeleteFile(sINIFileName + _T(".old"));
+	CString sINIFileName = GetUserINIFileName();
 	if (!ExistsUserINI()) {
 		CopyUserINIFromTemplate();
 		return;
 	}
 
-	const int BUFFER_LEN = 16000;
-	TCHAR* buffer = new TCHAR[BUFFER_LEN];
-	if (::GetPrivateProfileString(SECTION_NAME, NULL, _T(""), buffer, BUFFER_LEN, sINIFileName) == BUFFER_LEN - 2) {
-		// buffer was too small, maybe INI file corrupt, do not touch
-		delete[] buffer;
+	// build the new user INI in a temporary file first
+	// its a copy of the settings template with the user's customized values migrated.
+
+	CString sTemplateFileName = GetINITemplateName();
+	CString sNewINIFileName = sINIFileName + _T(".new");
+	CString sOldINIFileName = sINIFileName + _T(".old");
+	::DeleteFile(sNewINIFileName);
+	if (!::CopyFile(sTemplateFileName, sNewINIFileName, FALSE)) {
 		return;
 	}
 
-	CString newINIFileName = sINIFileName + _T(".new");
-	if (!::CopyFile(GetINITemplateName(), newINIFileName, FALSE)){
-		delete[] buffer;
+	MigrateCustomINISettings(sINIFileName, sTemplateFileName, sNewINIFileName);
+
+	// avoid unnecessary overwrites
+	// if the merge did not change anything,
+	// keep the existing user INI file untouched
+	if (FilesIdentical(sINIFileName, sNewINIFileName)) {
+		::DeleteFile(sNewINIFileName);
 		return;
 	}
 
-	TCHAR* currentKey = buffer;
-	while (*currentKey != 0) {
-		CString value = GetString(currentKey, _T(""));
-		if (!::WritePrivateProfileString(SECTION_NAME, currentKey, value, newINIFileName)) {
-			delete[] buffer;
+	::DeleteFile(sOldINIFileName);
+	if (::MoveFile(sINIFileName, sOldINIFileName)) {
+		if (::MoveFile(sNewINIFileName, sINIFileName)) {
+			::DeleteFile(sOldINIFileName);
 			return;
 		}
-		// go to next key
-		while (*currentKey != 0) currentKey++;
-		currentKey++;
+		// rollback: the new file could not be moved into place, restore the old one
+		::MoveFile(sOldINIFileName, sINIFileName);
 	}
-
-	delete[] buffer;
-	if (::MoveFile(sINIFileName, sINIFileName + _T(".old"))) {
-		::MoveFile(newINIFileName, sINIFileName);
-	}
+	::DeleteFile(sNewINIFileName);
 }
 
 int CSettingsProvider::DeleteOpenWithCommand(CUserCommand* pCommand) {
@@ -759,8 +855,9 @@ void CSettingsProvider::MakeSureUserINIExists() {
 	// Create JPEGView appdata directory and copy INI file if it does not exist
 	::CreateDirectory(Helpers::JPEGViewAppDataPath(), NULL);
 	if (::GetFileAttributes(m_sIniNameUser) == INVALID_FILE_ATTRIBUTES) {
-		::CopyFile(GetINITemplateName(), m_sIniNameUser, TRUE);
+		CopyUserINIFromTemplate();
 	}
+	m_bUserINIExists = ::GetFileAttributes(m_sIniNameUser) != INVALID_FILE_ATTRIBUTES;
 }
 
 CString CSettingsProvider::GetINITemplateName() {
@@ -783,7 +880,7 @@ LPCTSTR CSettingsProvider::ReadGlobalIniString(LPCTSTR key) {
 LPCTSTR CSettingsProvider::ReadIniString(LPCTSTR key, LPCTSTR fileName, IniHashMap*& keyMap, TCHAR*& pBuffer) {
 	if (keyMap == NULL) {
 		keyMap = new IniHashMap();
-		ReadIniFile(m_sIniNameUser, keyMap, pBuffer);
+		ReadIniFile(fileName, keyMap, pBuffer);
 	}
 	hash_map<LPCTSTR, LPCTSTR, CHashCompareLPCTSTR>::const_iterator iter;
 	iter = keyMap->find(key);
