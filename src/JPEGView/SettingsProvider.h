@@ -163,8 +163,6 @@ public:
 	void SaveStickyWindowRect(CRect rect);
 	
 	// Update user settings with settings from INI file template
-	// The custom settings of the existing user INI file are migrated
-	// to a fresh copy of the template in a temporary file first, then the user INI file is replaced
 	void UpdateUserSettings();
 
 	// Deletes the open with command, returns index of the deleted command, -1 if invalid
@@ -333,11 +331,6 @@ private:
 
 	CString GetINITemplateName();
 	void MakeSureUserINIExists();
-	// Migrates all keys of the section in the source file whose value differs
-	// from the value in the template file
-	void MigrateCustomINISettings(LPCTSTR sSourceFile, LPCTSTR sTemplateFile, LPCTSTR sDestFile);
-	// Returns true if both files have identical content
-	bool FilesIdentical(LPCTSTR sFile1, LPCTSTR sFile2);
 	CString ReplacePlaceholdersFileNameFormat(const CString& sFileNameFormat);
 	void ReadWriteableINISettings();
 
